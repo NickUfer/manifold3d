@@ -1,0 +1,16 @@
+[package]
+name = "manifold3d"
+description = "Bindings for Manifold - a Geometry library for topological robustness"
+homepage = "https://github.com/NickUfer/manifold-sys"
+license = "Apache-2.0"
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
+thiserror = "1.0.64"
+num-traits = "0.2.19"
+cgmath = { version = "0.18.0", optional = true }
+manifold-sys = { version = "0.0.2" }
+
+[features]
+cgmath_interop = ["cgmath"]
