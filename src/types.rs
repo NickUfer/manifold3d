@@ -1,3 +1,4 @@
+use manifold_sys::ManifoldVec3;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -6,15 +7,16 @@ pub enum PositiveNumError {
     NonPositiveValue,
 }
 
-pub struct ManifoldVec3 {
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Vec3 {
     pub x: f64,
     pub y: f64,
     pub z: f64,
 }
 
-impl From<manifold_sys::ManifoldVec3> for ManifoldVec3 {
-    fn from(value: manifold_sys::ManifoldVec3) -> Self {
-        ManifoldVec3 {
+impl From<ManifoldVec3> for Vec3 {
+    fn from(value: ManifoldVec3) -> Self {
+        Vec3 {
             x: value.x,
             y: value.y,
             z: value.z,
@@ -22,19 +24,82 @@ impl From<manifold_sys::ManifoldVec3> for ManifoldVec3 {
     }
 }
 
-#[cfg(feature = "cgmath_interop")]
-impl From<cgmath::Vector3<f64>> for ManifoldVec3 {
-    fn from(value: cgmath::Vector3<f64>) -> Self {
-        ManifoldVec3 {
+#[cfg(feature = "nalgebra_interop")]
+impl From<nalgebra::Vector3<f64>> for Vec3 {
+    fn from(value: nalgebra::Vector3<f64>) -> Self {
+        Vec3 {
             x: value.x,
             y: value.y,
-            z: value.y,
+            z: value.z,
         }
     }
 }
 
-#[derive(Error, Debug, Copy, Clone, PartialEq, Eq)]
-pub struct PositiveNum<T: num_traits::Num + Copy + PartialOrd>(T);
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Point3 {
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
+}
+
+impl From<ManifoldVec3> for Point3 {
+    fn from(value: ManifoldVec3) -> Self {
+        Point3 {
+            x: value.x,
+            y: value.y,
+            z: value.z,
+        }
+    }
+}
+
+#[cfg(feature = "nalgebra_interop")]
+impl From<nalgebra::Point3<f64>> for Point3 {
+    fn from(value: nalgebra::Point3<f64>) -> Self {
+        Point3 {
+            x: value.x,
+            y: value.y,
+            z: value.z,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Matrix4x3 {
+    pub rows: [Vec3; 4],
+}
+
+#[cfg(feature = "nalgebra_interop")]
+impl From<nalgebra::Matrix4x3<f64>> for Matrix4x3 {
+    fn from(matrix: nalgebra::Matrix4x3<f64>) -> Self {
+        Matrix4x3 {
+            rows: [
+                Vec3 {
+                    x: matrix.m11,
+                    y: matrix.m12,
+                    z: matrix.m13,
+                },
+                Vec3 {
+                    x: matrix.m21,
+                    y: matrix.m22,
+                    z: matrix.m23,
+                },
+                Vec3 {
+                    x: matrix.m31,
+                    y: matrix.m32,
+                    z: matrix.m33,
+                },
+                Vec3 {
+                    x: matrix.m41,
+                    y: matrix.m42,
+                    z: matrix.m43,
+                },
+            ],
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct PositiveNum<T: num_traits::Num + Clone + Copy + PartialOrd>(T);
 
 impl<T: num_traits::Num + Copy + PartialOrd> PositiveNum<T> {
     pub fn new(value: T) -> Result<Self, PositiveNumError> {
@@ -81,14 +146,28 @@ macro_rules! impl_positive_num_try_from {
     };
 }
 
+macro_rules! impl_into_primitive {
+    ($ttype:ident, $underlying_primitive:ident) => {
+        #[allow(clippy::from_over_into)]
+        impl Into<$underlying_primitive> for $ttype {
+            fn into(self) -> $underlying_primitive {
+                self.get()
+            }
+        }
+    };
+}
+
 pub type PositiveI32 = PositiveNum<i32>;
+impl_into_primitive!(PositiveI32, i32);
 impl_positive_num_from!(PositiveI32, i32, (u8, u16));
 impl_positive_num_try_from!(PositiveI32, i32, (i8, i16, i32));
 
 pub type PositiveF64 = PositiveNum<f64>;
+impl_into_primitive!(PositiveF64, f64);
 impl_positive_num_from!(PositiveF64, f64, (u8, u16, u32));
 impl_positive_num_try_from!(PositiveF64, f64, (i8, i16, i32, f32, f64));
 
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Angle(f64);
 
 impl Angle {

@@ -9,8 +9,8 @@ edition = "2021"
 [dependencies]
 thiserror = "1.0.64"
 num-traits = "0.2.19"
-cgmath = { version = "0.18.0", optional = true }
 manifold-sys = { version = "0.0.2" }
+nalgebra = { version = "0.33.0", optional = true }
 
 [features]
-cgmath_interop = ["cgmath"]
+nalgebra_interop = ["nalgebra"]

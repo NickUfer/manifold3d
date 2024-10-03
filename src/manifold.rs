@@ -1,14 +1,21 @@
+use crate::bounding_box::BoundingBox;
 use crate::meshgl::MeshGL;
-use crate::types::{ManifoldVec3, PositiveF64};
+use crate::types::{PositiveF64, PositiveI32, Vec3};
 use manifold_sys::{
     manifold_alloc_box, manifold_alloc_manifold, manifold_alloc_meshgl, manifold_bounding_box,
-    manifold_cube, manifold_delete_box, manifold_delete_manifold, manifold_empty,
+    manifold_copy, manifold_cube, manifold_cylinder, manifold_delete_manifold, manifold_empty,
     manifold_get_meshgl, manifold_is_empty, manifold_num_edge, manifold_num_tri, manifold_num_vert,
-    ManifoldBox, ManifoldManifold,
+    manifold_tetrahedron, ManifoldManifold,
 };
 use std::os::raw::c_int;
 
 pub struct Manifold(*mut ManifoldManifold);
+
+pub fn new_tetrahedron() -> Manifold {
+    let manifold_ptr = unsafe { manifold_alloc_manifold() };
+    unsafe { manifold_tetrahedron(manifold_ptr as *mut std::os::raw::c_void) };
+    Manifold(manifold_ptr)
+}
 
 /// Constructs a 3D cuboid with the specified dimensions in the first octant of 3D space.
 ///
@@ -38,9 +45,9 @@ pub fn new_cuboid(
     origin_at_center: bool,
 ) -> Manifold {
     new_cuboid_unchecked(
-        x_size.into().get(),
-        y_size.into().get(),
-        z_size.into().get(),
+        x_size.into(),
+        y_size.into(),
+        z_size.into(),
         origin_at_center,
     )
 }
@@ -101,11 +108,11 @@ pub fn new_cuboid_unchecked(
 /// # Examples
 /// ```
 /// use manifold3d::manifold::{new_cuboid_from_vec_unchecked, new_cuboid_unchecked};
-/// use manifold3d::types::ManifoldVec3;
+/// use manifold3d::types::Vec3;
 ///
 /// // A cuboid of size 1x2x3, touching the origin in the first octant.
 /// let cuboid = new_cuboid_from_vec_unchecked(
-///     ManifoldVec3 {
+///     Vec3 {
 ///         x: 1.0,
 ///         y: 2.0,
 ///         z: 3.0,
@@ -116,7 +123,7 @@ pub fn new_cuboid_unchecked(
 /// // A cube of size 1.5x1.5x1.5 with its center at (0, 0, 0).
 /// let cube_edge_length = 1.5;
 /// let cube = new_cuboid_from_vec_unchecked(
-///     ManifoldVec3 {
+///     Vec3 {
 ///         x: cube_edge_length,
 ///         y: cube_edge_length,
 ///         z: cube_edge_length,
@@ -124,12 +131,51 @@ pub fn new_cuboid_unchecked(
 ///     true,
 /// );
 /// ```
-pub fn new_cuboid_from_vec_unchecked(
-    size: impl Into<ManifoldVec3>,
-    origin_at_center: bool,
-) -> Manifold {
+pub fn new_cuboid_from_vec_unchecked(size: impl Into<Vec3>, origin_at_center: bool) -> Manifold {
     let size = size.into();
     new_cuboid_unchecked(size.x, size.y, size.z, origin_at_center)
+}
+
+pub fn new_cylinder(
+    height: impl Into<PositiveF64>,
+    bottom_radius: impl Into<PositiveF64>,
+    top_radius: Option<impl Into<PositiveF64>>,
+    circular_segments: Option<impl Into<PositiveI32>>,
+    origin_at_center: bool,
+) -> Manifold {
+    let bottom_radius = bottom_radius.into();
+    // Set top radius = bottom radius if none is set
+    let top_radius = top_radius.map_or(bottom_radius, |t| t.into());
+    // 0 segments = usage of static quality defaults
+    let circular_segments = circular_segments.map_or(0, |c| c.into().get());
+    new_cylinder_unchecked(
+        height.into(),
+        bottom_radius,
+        top_radius,
+        circular_segments,
+        origin_at_center,
+    )
+}
+
+pub fn new_cylinder_unchecked(
+    height: impl Into<f64>,
+    bottom_radius: impl Into<f64>,
+    top_radius: impl Into<f64>,
+    circular_segments: impl Into<i32>,
+    origin_at_center: bool,
+) -> Manifold {
+    let manifold_ptr = unsafe { manifold_alloc_manifold() };
+    unsafe {
+        manifold_cylinder(
+            manifold_ptr as *mut std::os::raw::c_void,
+            height.into(),
+            bottom_radius.into(),
+            top_radius.into(),
+            circular_segments.into(),
+            c_int::from(origin_at_center),
+        )
+    };
+    Manifold(manifold_ptr)
 }
 
 pub fn new_empty() -> Manifold {
@@ -164,7 +210,15 @@ impl Manifold {
     pub fn bounding_box(&self) -> BoundingBox {
         let bounding_box_ptr = unsafe { manifold_alloc_box() };
         unsafe { manifold_bounding_box(bounding_box_ptr as *mut std::os::raw::c_void, self.0) };
-        BoundingBox(bounding_box_ptr)
+        BoundingBox::from_ptr(bounding_box_ptr)
+    }
+}
+
+impl Clone for Manifold {
+    fn clone(&self) -> Self {
+        let manifold_ptr = unsafe { manifold_alloc_manifold() };
+        unsafe { manifold_copy(manifold_ptr as *mut std::os::raw::c_void, self.0) };
+        Manifold(manifold_ptr)
     }
 }
 
@@ -172,16 +226,6 @@ impl Drop for Manifold {
     fn drop(&mut self) {
         unsafe {
             manifold_delete_manifold(self.0);
-        }
-    }
-}
-
-pub struct BoundingBox(*mut ManifoldBox);
-
-impl Drop for BoundingBox {
-    fn drop(&mut self) {
-        unsafe {
-            manifold_delete_box(self.0);
         }
     }
 }
