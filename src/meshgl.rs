@@ -16,6 +16,10 @@ impl MeshGL {
         MeshGL(ptr)
     }
 
+    pub(crate) fn ptr(&self) -> *mut ManifoldMeshGL {
+        self.0
+    }
+
     pub fn merge(&self) -> Option<MeshGL> {
         let duplicate_ptr = unsafe { manifold_alloc_meshgl() };
         let returned_ptr =
