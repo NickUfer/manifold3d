@@ -1,35 +1,62 @@
+use crate::manifold::Manifold;
 use manifold_sys::{
-    manifold_alloc_meshgl, manifold_delete_meshgl, manifold_meshgl_copy,
+    manifold_alloc_manifold, manifold_alloc_meshgl, manifold_delete_meshgl, manifold_meshgl_copy,
     manifold_meshgl_face_id_length, manifold_meshgl_merge, manifold_meshgl_merge_length,
     manifold_meshgl_num_prop, manifold_meshgl_num_tri, manifold_meshgl_num_vert,
     manifold_meshgl_run_index_length, manifold_meshgl_run_original_id_length,
     manifold_meshgl_run_transform_length, manifold_meshgl_tangent_length,
     manifold_meshgl_tri_length, manifold_meshgl_vert_properties,
-    manifold_meshgl_vert_properties_length, ManifoldMeshGL,
+    manifold_meshgl_vert_properties_length, manifold_smooth, ManifoldMeshGL,
 };
 use std::alloc::{alloc, Layout};
+use std::collections::HashMap;
+use std::os::raw::c_void;
+use crate::manifold;
+
+pub type HalfedgeIndex = usize;
+pub type Smoothness = f64;
 
 pub struct MeshGL(*mut ManifoldMeshGL);
 
-impl MeshGL {
-    pub(crate) fn from_ptr(ptr: *mut ManifoldMeshGL) -> MeshGL {
-        MeshGL(ptr)
-    }
+pub(crate) fn from_ptr(ptr: *mut ManifoldMeshGL) -> MeshGL {
+    MeshGL(ptr)
+}
 
+impl MeshGL {
     pub(crate) fn ptr(&self) -> *mut ManifoldMeshGL {
         self.0
     }
 
     pub fn merge(&self) -> Option<MeshGL> {
         let duplicate_ptr = unsafe { manifold_alloc_meshgl() };
-        let returned_ptr =
-            unsafe { manifold_meshgl_merge(duplicate_ptr as *mut std::os::raw::c_void, self.0) };
+        let returned_ptr = unsafe { manifold_meshgl_merge(duplicate_ptr as *mut c_void, self.0) };
 
         // If the pointer to the duplicate_ptr was returned it means the operation was successful
         if duplicate_ptr == returned_ptr {
             return Some(MeshGL(duplicate_ptr));
         }
         None
+    }
+
+    pub fn smooth(
+        &self,
+        mesh: &MeshGL,
+        half_edge_smoothness: HashMap<HalfedgeIndex, Smoothness>,
+    ) -> Manifold {
+        let length = half_edge_smoothness.len();
+        let (mut edge_indexes, mut edge_smoothness): (Vec<usize>, Vec<f64>) =
+            half_edge_smoothness.into_iter().unzip();
+        let manifold_ptr = unsafe { manifold_alloc_manifold() };
+        unsafe {
+            manifold_smooth(
+                manifold_ptr as *mut c_void,
+                mesh.ptr(),
+                edge_indexes.as_mut_ptr(),
+                edge_smoothness.as_mut_ptr(),
+                length,
+            )
+        };
+        manifold::from_ptr(manifold_ptr)
     }
 
     pub fn properties_per_vertex_count(&self) -> i32 {
@@ -82,9 +109,7 @@ impl MeshGL {
         let element_count = self.vertex_property_count();
         let layout = Layout::array::<f32>(element_count).unwrap();
         let array_start_ptr = unsafe { alloc(layout) } as *mut f32;
-        unsafe {
-            manifold_meshgl_vert_properties(array_start_ptr as *mut std::os::raw::c_void, self.0)
-        };
+        unsafe { manifold_meshgl_vert_properties(array_start_ptr as *mut c_void, self.0) };
 
         unsafe { Vec::from_raw_parts(array_start_ptr, element_count, element_count) }
     }
@@ -99,7 +124,7 @@ impl Drop for MeshGL {
 impl Clone for MeshGL {
     fn clone(&self) -> Self {
         let mesh_gl_ptr = unsafe { manifold_alloc_meshgl() };
-        unsafe { manifold_meshgl_copy(mesh_gl_ptr as *mut std::os::raw::c_void, self.0) };
+        unsafe { manifold_meshgl_copy(mesh_gl_ptr as *mut c_void, self.0) };
         MeshGL(mesh_gl_ptr)
     }
 }

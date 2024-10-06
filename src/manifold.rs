@@ -1,20 +1,20 @@
 use crate::bounding_box::BoundingBox;
-use crate::meshgl::MeshGL;
+use crate::mesh_gl::MeshGL;
 use crate::types::{PositiveF64, PositiveI32, Vec3};
+use crate::{bounding_box, mesh_gl};
 use manifold_sys::{
     manifold_alloc_box, manifold_alloc_manifold, manifold_alloc_meshgl, manifold_bounding_box,
     manifold_copy, manifold_cube, manifold_cylinder, manifold_delete_manifold, manifold_empty,
     manifold_get_meshgl, manifold_is_empty, manifold_num_edge, manifold_num_tri, manifold_num_vert,
-    manifold_of_meshgl, manifold_smooth, manifold_sphere, manifold_tetrahedron, ManifoldManifold,
+    manifold_of_meshgl, manifold_sphere, manifold_tetrahedron, ManifoldManifold,
 };
-use std::collections::HashMap;
-use std::os::raw::c_int;
+use std::os::raw::{c_int, c_void};
 
 pub struct Manifold(*mut ManifoldManifold);
 
 pub fn new_tetrahedron() -> Manifold {
     let manifold_ptr = unsafe { manifold_alloc_manifold() };
-    unsafe { manifold_tetrahedron(manifold_ptr as *mut std::os::raw::c_void) };
+    unsafe { manifold_tetrahedron(manifold_ptr as *mut c_void) };
     Manifold(manifold_ptr)
 }
 
@@ -84,7 +84,7 @@ pub fn new_cuboid_unchecked(
     let manifold_ptr = unsafe { manifold_alloc_manifold() };
     unsafe {
         manifold_cube(
-            manifold_ptr as *mut std::os::raw::c_void,
+            manifold_ptr as *mut c_void,
             x_size.into(),
             y_size.into(),
             z_size.into(),
@@ -168,7 +168,7 @@ pub fn new_cylinder_unchecked(
     let manifold_ptr = unsafe { manifold_alloc_manifold() };
     unsafe {
         manifold_cylinder(
-            manifold_ptr as *mut std::os::raw::c_void,
+            manifold_ptr as *mut c_void,
             height.into(),
             bottom_radius.into(),
             top_radius.into(),
@@ -192,7 +192,7 @@ pub fn new_sphere_unchecked(radius: impl Into<f64>, circular_segments: impl Into
     let manifold_ptr = unsafe { manifold_alloc_manifold() };
     unsafe {
         manifold_sphere(
-            manifold_ptr as *mut std::os::raw::c_void,
+            manifold_ptr as *mut c_void,
             radius.into(),
             circular_segments.into() as c_int,
         )
@@ -202,7 +202,7 @@ pub fn new_sphere_unchecked(radius: impl Into<f64>, circular_segments: impl Into
 
 pub fn new_empty() -> Manifold {
     let manifold_ptr = unsafe { manifold_alloc_manifold() };
-    unsafe { manifold_empty(manifold_ptr as *mut std::os::raw::c_void) };
+    unsafe { manifold_empty(manifold_ptr as *mut c_void) };
     Manifold(manifold_ptr)
 }
 
@@ -210,31 +210,11 @@ pub fn new_from_mesh_gl(mesh_gl: &MeshGL) -> Manifold {
     Manifold::from(mesh_gl)
 }
 
-pub type HalfedgeIndex = usize;
-pub type Smoothness = f64;
+pub(crate) fn from_ptr(ptr: *mut ManifoldManifold) -> Manifold {
+    Manifold(ptr)
+}
 
 impl Manifold {
-    pub fn smooth(
-        &self,
-        mesh: &MeshGL,
-        half_edge_smoothness: HashMap<HalfedgeIndex, Smoothness>,
-    ) -> Manifold {
-        let length = half_edge_smoothness.len();
-        let (mut edge_indexes, mut edge_smoothness): (Vec<usize>, Vec<f64>) =
-            half_edge_smoothness.into_iter().unzip();
-        let manifold_ptr = unsafe { manifold_alloc_manifold() };
-        unsafe {
-            manifold_smooth(
-                manifold_ptr as *mut std::os::raw::c_void,
-                mesh.ptr(),
-                edge_indexes.as_mut_ptr(),
-                edge_smoothness.as_mut_ptr(),
-                length,
-            )
-        };
-        Manifold(manifold_ptr)
-    }
-
     pub fn is_empty(&self) -> bool {
         unsafe { manifold_is_empty(self.0) == 1 }
     }
@@ -253,21 +233,21 @@ impl Manifold {
 
     pub fn get_mesh(&self) -> MeshGL {
         let mesh_gl_ptr = unsafe { manifold_alloc_meshgl() };
-        unsafe { manifold_get_meshgl(mesh_gl_ptr as *mut std::os::raw::c_void, self.0) };
-        MeshGL::from_ptr(mesh_gl_ptr)
+        unsafe { manifold_get_meshgl(mesh_gl_ptr as *mut c_void, self.0) };
+        mesh_gl::from_ptr(mesh_gl_ptr)
     }
 
     pub fn bounding_box(&self) -> BoundingBox {
         let bounding_box_ptr = unsafe { manifold_alloc_box() };
-        unsafe { manifold_bounding_box(bounding_box_ptr as *mut std::os::raw::c_void, self.0) };
-        BoundingBox::from_ptr(bounding_box_ptr)
+        unsafe { manifold_bounding_box(bounding_box_ptr as *mut c_void, self.0) };
+        bounding_box::from_ptr(bounding_box_ptr)
     }
 }
 
 impl From<&'_ MeshGL> for Manifold {
     fn from(value: &MeshGL) -> Self {
         let manifold_ptr = unsafe { manifold_alloc_manifold() };
-        unsafe { manifold_of_meshgl(manifold_ptr as *mut std::os::raw::c_void, value.ptr()) };
+        unsafe { manifold_of_meshgl(manifold_ptr as *mut c_void, value.ptr()) };
         Manifold(manifold_ptr)
     }
 }
@@ -275,7 +255,7 @@ impl From<&'_ MeshGL> for Manifold {
 impl Clone for Manifold {
     fn clone(&self) -> Self {
         let manifold_ptr = unsafe { manifold_alloc_manifold() };
-        unsafe { manifold_copy(manifold_ptr as *mut std::os::raw::c_void, self.0) };
+        unsafe { manifold_copy(manifold_ptr as *mut c_void, self.0) };
         Manifold(manifold_ptr)
     }
 }

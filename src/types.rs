@@ -1,10 +1,35 @@
-use manifold_sys::ManifoldVec3;
+use manifold_sys::{ManifoldVec2, ManifoldVec3};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum PositiveNumError {
     #[error("the value is not positive")]
     NonPositiveValue,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Vec2 {
+    pub x: f64,
+    pub y: f64,
+}
+
+impl From<ManifoldVec2> for Vec2 {
+    fn from(value: ManifoldVec2) -> Self {
+        Vec2 {
+            x: value.x,
+            y: value.y,
+        }
+    }
+}
+
+#[cfg(feature = "nalgebra_interop")]
+impl From<nalgebra::Vector2<f64>> for Vec2 {
+    fn from(value: nalgebra::Vector2<f64>) -> Self {
+        Vec2 {
+            x: value.x,
+            y: value.y,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -31,6 +56,30 @@ impl From<nalgebra::Vector3<f64>> for Vec3 {
             x: value.x,
             y: value.y,
             z: value.z,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Point2 {
+    pub x: f64,
+    pub y: f64,
+}
+
+impl From<ManifoldVec2> for Point2 {
+    fn from(value: ManifoldVec2) -> Self {
+        Point2 {
+            x: value.x,
+            y: value.y,
+        }
+    }
+}
+
+impl From<Point2> for ManifoldVec2 {
+    fn from(value: Point2) -> Self {
+        ManifoldVec2 {
+            x: value.x,
+            y: value.y,
         }
     }
 }

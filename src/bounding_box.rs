@@ -7,6 +7,7 @@ use manifold_sys::{
     manifold_box_transform, manifold_box_translate, manifold_box_union, manifold_delete_box,
     ManifoldBox,
 };
+use std::os::raw::c_void;
 
 pub struct BoundingBox(*mut ManifoldBox);
 
@@ -14,7 +15,7 @@ pub fn new(min_point: Point3, max_point: Point3) -> BoundingBox {
     let manifold_box_ptr = unsafe { manifold_alloc_box() };
     unsafe {
         manifold_box(
-            manifold_box_ptr as *mut std::os::raw::c_void,
+            manifold_box_ptr as *mut c_void,
             min_point.x,
             min_point.y,
             min_point.z,
@@ -26,11 +27,11 @@ pub fn new(min_point: Point3, max_point: Point3) -> BoundingBox {
     BoundingBox(manifold_box_ptr)
 }
 
-impl BoundingBox {
-    pub(crate) fn from_ptr(ptr: *mut ManifoldBox) -> BoundingBox {
-        BoundingBox(ptr)
-    }
+pub(crate) fn from_ptr(ptr: *mut ManifoldBox) -> BoundingBox {
+    BoundingBox(ptr)
+}
 
+impl BoundingBox {
     pub fn min_point(&self) -> Point3 {
         unsafe { Point3::from(manifold_box_min(self.0)) }
     }
@@ -67,13 +68,7 @@ impl BoundingBox {
 
     pub fn union(&self, other: &Self) -> Self {
         let manifold_box_ptr = unsafe { manifold_alloc_box() };
-        unsafe {
-            manifold_box_union(
-                manifold_box_ptr as *mut std::os::raw::c_void,
-                self.0,
-                other.0,
-            )
-        };
+        unsafe { manifold_box_union(manifold_box_ptr as *mut c_void, self.0, other.0) };
         BoundingBox(manifold_box_ptr)
     }
 
@@ -82,7 +77,7 @@ impl BoundingBox {
         let manifold_box_ptr = unsafe { manifold_alloc_box() };
         unsafe {
             manifold_box_transform(
-                manifold_box_ptr as *mut std::os::raw::c_void,
+                manifold_box_ptr as *mut c_void,
                 self.0,
                 matrix.rows[0].x,
                 matrix.rows[0].y,
@@ -106,7 +101,7 @@ impl BoundingBox {
         let manifold_box_ptr = unsafe { manifold_alloc_box() };
         unsafe {
             manifold_box_translate(
-                manifold_box_ptr as *mut std::os::raw::c_void,
+                manifold_box_ptr as *mut c_void,
                 self.0,
                 translation.x,
                 translation.y,
@@ -121,7 +116,7 @@ impl BoundingBox {
         let manifold_box_ptr = unsafe { manifold_alloc_box() };
         unsafe {
             manifold_box_mul(
-                manifold_box_ptr as *mut std::os::raw::c_void,
+                manifold_box_ptr as *mut c_void,
                 self.0,
                 scale.x,
                 scale.y,
