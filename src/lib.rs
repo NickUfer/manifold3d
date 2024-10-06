@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 pub mod bounding_box;
 pub mod manifold;
 pub mod mesh_gl;
