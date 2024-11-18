@@ -1,4 +1,5 @@
-use manifold_sys::{ManifoldVec2, ManifoldVec3};
+use manifold3d_sys::{ManifoldVec2, ManifoldVec3};
+use std::ops::{Add, AddAssign, Sub, SubAssign};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -158,6 +159,7 @@ impl<T: num_traits::Num + Copy + PartialOrd> PositiveNum<T> {
         Ok(PositiveNum(value))
     }
 
+    #[inline(always)]
     fn is_valid(value: T) -> bool {
         value > T::zero()
     }
@@ -216,31 +218,65 @@ impl_into_primitive!(PositiveF64, f64);
 impl_positive_num_from!(PositiveF64, f64, (u8, u16, u32));
 impl_positive_num_try_from!(PositiveF64, f64, (i8, i16, i32, f32, f64));
 
+/// Represents an angle, measured in degrees, constrained to the range [-360.0, 360.0].
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Angle(f64);
+pub struct NormalizedAngle(f64);
 
-impl Angle {
-    pub fn from_positive_num<T>(value: PositiveNum<T>) -> Self
+impl NormalizedAngle {
+    pub fn from_degrees<T>(value: T) -> Self
     where
-        T: num_traits::Num + PartialOrd + Copy,
-        f64: From<T>,
+        T: Into<f64>,
     {
-        Angle(f64::from(value.get()) % 360.0)
-    }
-
-    pub fn from_unchecked<T>(value: T) -> Self
-    where
-        f64: From<T>,
-    {
-        let mut value = f64::from(value) % 360.0;
-        if value < 0.0 {
-            value = 360.0 - value;
-        }
-
-        Angle(value)
+        NormalizedAngle(Self::normalize(value))
     }
 
     pub fn as_degrees(&self) -> f64 {
         self.0
+    }
+
+    fn normalize(value: impl Into<f64>) -> f64 {
+        let mut value = value.into() % 360.0;
+        if value < 0.0 {
+            value = 360.0 - value;
+        }
+        value
+    }
+}
+
+impl<T> From<PositiveNum<T>> for NormalizedAngle
+where
+    T: num_traits::Num + PartialOrd + Copy,
+    f64: From<T>,
+{
+    fn from(value: PositiveNum<T>) -> Self {
+        NormalizedAngle(f64::from(value.get()) % 360.0)
+    }
+}
+
+impl Add for NormalizedAngle {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self::from_degrees(self.0 + rhs.0)
+    }
+}
+
+impl AddAssign for NormalizedAngle {
+    fn add_assign(&mut self, rhs: Self) {
+        self.0 = Self::normalize(self.0 + rhs.0);
+    }
+}
+
+impl Sub for NormalizedAngle {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self::from_degrees(self.0 - rhs.0)
+    }
+}
+
+impl SubAssign for NormalizedAngle {
+    fn sub_assign(&mut self, rhs: Self) {
+        self.0 = Self::normalize(self.0 - rhs.0);
     }
 }

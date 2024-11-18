@@ -1,12 +1,12 @@
-use crate::types::{Angle, PositiveF64, PositiveI32};
-use manifold_sys::{
+use crate::types::{NormalizedAngle, PositiveF64, PositiveI32};
+use manifold3d_sys::{
     manifold_get_circular_segments, manifold_reset_to_circular_defaults,
     manifold_set_circular_segments, manifold_set_min_circular_angle,
     manifold_set_min_circular_edge_length,
 };
 use std::num::NonZeroI32;
 
-pub fn set_min_circular_angle(angle: Angle) {
+pub fn set_min_circular_angle(angle: NormalizedAngle) {
     unsafe { manifold_set_min_circular_angle(angle.as_degrees()) }
 }
 
@@ -45,7 +45,7 @@ pub fn reset_to_circular_defaults() {
 #[cfg(test)]
 mod tests {
     use crate::quality::*;
-    use crate::types::{Angle, PositiveF64, PositiveI32};
+    use crate::types::{NormalizedAngle, PositiveF64, PositiveI32};
 
     #[test]
     fn test_set_and_get_circular_segments() {
@@ -59,7 +59,7 @@ mod tests {
     #[test]
     fn test_set_min_circular_angle_and_edge_length_and_get_circular_segments() {
         reset_to_circular_defaults();
-        set_min_circular_angle(Angle::from_positive_num(PositiveI32::new(365).unwrap()));
+        set_min_circular_angle(NormalizedAngle::from_degrees(365.0));
         set_min_circular_edge_length(PositiveF64::new(1.0).unwrap());
         let result = get_circular_segments(PositiveF64::new(10.0).unwrap());
         assert_eq!(result.get(), 64);

@@ -1,5 +1,5 @@
 use crate::manifold::Manifold;
-use manifold_sys::{
+use manifold3d_sys::{
     manifold_alloc_manifold, manifold_alloc_meshgl, manifold_delete_meshgl, manifold_meshgl_copy,
     manifold_meshgl_face_id_length, manifold_meshgl_merge, manifold_meshgl_merge_length,
     manifold_meshgl_num_prop, manifold_meshgl_num_tri, manifold_meshgl_num_vert,
@@ -11,18 +11,17 @@ use manifold_sys::{
 use std::alloc::{alloc, Layout};
 use std::collections::HashMap;
 use std::os::raw::c_void;
-use crate::manifold;
 
 pub type HalfedgeIndex = usize;
 pub type Smoothness = f64;
 
 pub struct MeshGL(*mut ManifoldMeshGL);
 
-pub(crate) fn from_ptr(ptr: *mut ManifoldMeshGL) -> MeshGL {
-    MeshGL(ptr)
-}
-
 impl MeshGL {
+    pub(crate) fn from_ptr(ptr: *mut ManifoldMeshGL) -> MeshGL {
+        MeshGL(ptr)
+    }
+
     pub(crate) fn ptr(&self) -> *mut ManifoldMeshGL {
         self.0
     }
@@ -56,7 +55,7 @@ impl MeshGL {
                 length,
             )
         };
-        manifold::from_ptr(manifold_ptr)
+        Manifold::from_ptr(manifold_ptr)
     }
 
     pub fn properties_per_vertex_count(&self) -> i32 {
@@ -115,16 +114,16 @@ impl MeshGL {
     }
 }
 
-impl Drop for MeshGL {
-    fn drop(&mut self) {
-        unsafe { manifold_delete_meshgl(self.0) }
+impl Clone for MeshGL {
+    fn clone(&self) -> Self {
+        let mesh_gl_ptr =
+            unsafe { manifold_meshgl_copy(manifold_alloc_meshgl() as *mut c_void, self.0) };
+        MeshGL(mesh_gl_ptr)
     }
 }
 
-impl Clone for MeshGL {
-    fn clone(&self) -> Self {
-        let mesh_gl_ptr = unsafe { manifold_alloc_meshgl() };
-        unsafe { manifold_meshgl_copy(mesh_gl_ptr as *mut c_void, self.0) };
-        MeshGL(mesh_gl_ptr)
+impl Drop for MeshGL {
+    fn drop(&mut self) {
+        unsafe { manifold_delete_meshgl(self.0) }
     }
 }

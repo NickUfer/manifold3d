@@ -1,5 +1,5 @@
 use crate::types::{Matrix4x3, Point3, Vec3};
-use manifold_sys::{
+use manifold3d_sys::{
     manifold_alloc_box, manifold_box, manifold_box_center, manifold_box_contains_box,
     manifold_box_contains_pt, manifold_box_dimensions, manifold_box_does_overlap_box,
     manifold_box_does_overlap_pt, manifold_box_include_pt, manifold_box_is_finite,
@@ -11,27 +11,27 @@ use std::os::raw::c_void;
 
 pub struct BoundingBox(*mut ManifoldBox);
 
-pub fn new(min_point: Point3, max_point: Point3) -> BoundingBox {
-    let manifold_box_ptr = unsafe { manifold_alloc_box() };
-    unsafe {
-        manifold_box(
-            manifold_box_ptr as *mut c_void,
-            min_point.x,
-            min_point.y,
-            min_point.z,
-            max_point.x,
-            max_point.y,
-            max_point.z,
-        )
-    };
-    BoundingBox(manifold_box_ptr)
-}
-
-pub(crate) fn from_ptr(ptr: *mut ManifoldBox) -> BoundingBox {
-    BoundingBox(ptr)
-}
-
 impl BoundingBox {
+    pub fn new(min_point: Point3, max_point: Point3) -> BoundingBox {
+        let manifold_box_ptr = unsafe { manifold_alloc_box() };
+        unsafe {
+            manifold_box(
+                manifold_box_ptr as *mut c_void,
+                min_point.x,
+                min_point.y,
+                min_point.z,
+                max_point.x,
+                max_point.y,
+                max_point.z,
+            )
+        };
+        BoundingBox(manifold_box_ptr)
+    }
+
+    pub(crate) fn from_ptr(ptr: *mut ManifoldBox) -> BoundingBox {
+        BoundingBox(ptr)
+    }
+
     pub fn min_point(&self) -> Point3 {
         unsafe { Point3::from(manifold_box_min(self.0)) }
     }
