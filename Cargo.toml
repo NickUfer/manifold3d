@@ -9,10 +9,10 @@ include = [
     "/src",
     "/LICENSE",
     "/build.rs",
+    "/tests"
 ]
 
 [lib]
-test = false
 crate-type = ["cdylib", "rlib", "staticlib"]
 
 [dependencies]
