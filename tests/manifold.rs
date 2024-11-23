@@ -1,7 +1,7 @@
-use manifold3d::macros::manifold_warp;
-use manifold3d::types::manifold::vertex;
-use manifold3d::{types, BooleanOperation, Manifold};
 use std::pin::Pin;
+use manifold3d::{types, BooleanOperation, Manifold};
+use manifold3d_macros::manifold_warp;
+use manifold3d_types::manifold::vertex;
 
 #[test]
 fn test_translation() {

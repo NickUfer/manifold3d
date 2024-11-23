@@ -24,6 +24,5 @@ parallel = ["manifold3d-sys/parallel"]
 [workspace]
 members = [
     "crates/macros",
-    "crates/tests",
     "crates/types"
 ]
