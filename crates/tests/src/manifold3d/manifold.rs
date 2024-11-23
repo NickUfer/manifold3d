@@ -64,7 +64,7 @@ fn test_linear_warping() {
         translation: types::math::Vec3,
     }
 
-    impl vertex::WarpImpl for TranslationWarp {
+    impl vertex::WarpVertex for TranslationWarp {
         fn warp_vertex(&self, vertex: types::math::Point3) -> types::math::Point3 {
             let result = types::math::Point3::new(
                 vertex.x + self.translation.x,

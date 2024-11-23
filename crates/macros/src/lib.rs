@@ -31,7 +31,7 @@ pub fn manifold_warp(_attr: TokenStream, input: TokenStream) -> TokenStream {
         #structt
 
         const _: () = {
-            use manifold3d::types::manifold::vertex::WarpImpl;
+            use manifold3d::types::manifold::vertex::WarpVertex;
 
             #[no_mangle]
             #[doc(hidden)]

@@ -1,9 +1,9 @@
 use crate::math;
 use manifold3d_sys::ManifoldVec3;
 
-pub trait Warp: WarpImpl + ExternCWarpFn {}
+pub trait Warp: WarpVertex + ExternCWarpFn {}
 
-pub trait WarpImpl {
+pub trait WarpVertex {
     fn warp_vertex(&self, vertex: math::Point3) -> math::Point3;
 }
 
