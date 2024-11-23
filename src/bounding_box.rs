@@ -1,4 +1,4 @@
-use crate::types::{Matrix4x3, Point3, Vec3};
+use crate::types::math::{Matrix4x3, Point3, Vec3};
 use manifold3d_sys::{
     manifold_alloc_box, manifold_box, manifold_box_center, manifold_box_contains_box,
     manifold_box_contains_pt, manifold_box_dimensions, manifold_box_does_overlap_box,
@@ -13,10 +13,9 @@ pub struct BoundingBox(*mut ManifoldBox);
 
 impl BoundingBox {
     pub fn new(min_point: Point3, max_point: Point3) -> BoundingBox {
-        let manifold_box_ptr = unsafe { manifold_alloc_box() };
-        unsafe {
+        let manifold_box_ptr = unsafe {
             manifold_box(
-                manifold_box_ptr as *mut c_void,
+                manifold_alloc_box() as *mut c_void,
                 min_point.x,
                 min_point.y,
                 min_point.z,
@@ -25,7 +24,7 @@ impl BoundingBox {
                 max_point.z,
             )
         };
-        BoundingBox(manifold_box_ptr)
+        BoundingBox::from_ptr(manifold_box_ptr)
     }
 
     pub(crate) fn from_ptr(ptr: *mut ManifoldBox) -> BoundingBox {
@@ -67,17 +66,16 @@ impl BoundingBox {
     }
 
     pub fn union(&self, other: &Self) -> Self {
-        let manifold_box_ptr = unsafe { manifold_alloc_box() };
-        unsafe { manifold_box_union(manifold_box_ptr as *mut c_void, self.0, other.0) };
-        BoundingBox(manifold_box_ptr)
+        let manifold_box_ptr =
+            unsafe { manifold_box_union(manifold_alloc_box() as *mut c_void, self.0, other.0) };
+        BoundingBox::from_ptr(manifold_box_ptr)
     }
 
     pub fn transform(&self, matrix: impl Into<Matrix4x3>) -> BoundingBox {
         let matrix = matrix.into();
-        let manifold_box_ptr = unsafe { manifold_alloc_box() };
-        unsafe {
+        let manifold_box_ptr = unsafe {
             manifold_box_transform(
-                manifold_box_ptr as *mut c_void,
+                manifold_alloc_box() as *mut c_void,
                 self.0,
                 matrix.rows[0].x,
                 matrix.rows[0].y,
@@ -93,43 +91,42 @@ impl BoundingBox {
                 matrix.rows[3].z,
             )
         };
-        BoundingBox(manifold_box_ptr)
+        BoundingBox::from_ptr(manifold_box_ptr)
     }
 
     pub fn translate(&self, translation: impl Into<Vec3>) -> BoundingBox {
         let translation = translation.into();
-        let manifold_box_ptr = unsafe { manifold_alloc_box() };
-        unsafe {
+        let manifold_box_ptr = unsafe {
             manifold_box_translate(
-                manifold_box_ptr as *mut c_void,
+                manifold_alloc_box() as *mut c_void,
                 self.0,
                 translation.x,
                 translation.y,
                 translation.z,
             )
         };
-        BoundingBox(manifold_box_ptr)
+        BoundingBox::from_ptr(manifold_box_ptr)
     }
 
     pub fn multiply(&self, scale_factor: impl Into<Vec3>) -> BoundingBox {
         let scale = scale_factor.into();
-        let manifold_box_ptr = unsafe { manifold_alloc_box() };
-        unsafe {
+        let manifold_box_ptr = unsafe {
             manifold_box_mul(
-                manifold_box_ptr as *mut c_void,
+                manifold_alloc_box() as *mut c_void,
                 self.0,
                 scale.x,
                 scale.y,
                 scale.z,
             )
         };
-        BoundingBox(manifold_box_ptr)
+        BoundingBox::from_ptr(manifold_box_ptr)
     }
 
     pub fn overlaps_point(&self, point: impl Into<Point3>) -> bool {
         let point = point.into();
-        let manifold_box_ptr = unsafe { manifold_alloc_box() };
-        unsafe { manifold_box_does_overlap_pt(manifold_box_ptr, point.x, point.y, point.z) == 1 }
+        unsafe {
+            manifold_box_does_overlap_pt(manifold_alloc_box(), point.x, point.y, point.z) == 1
+        }
     }
 
     pub fn overlaps_bounding_box(&self, other: &BoundingBox) -> bool {

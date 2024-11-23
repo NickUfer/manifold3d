@@ -3,16 +3,27 @@ name = "manifold3d"
 description = "Bindings for Manifold - a Geometry library for topological robustness"
 homepage = "https://github.com/NickUfer/manifold3d-rs"
 license = "Apache-2.0"
-version = "0.0.2"
+version = "0.0.3"
 edition = "2021"
 
+[lib]
+test = false
+crate-type = ["cdylib", "rlib", "staticlib"]
+
 [dependencies]
-thiserror = "2.0"
-num-traits = "0.2.19"
+manifold3d-types = { path = "crates/types", version = "0.0.1" }
+manifold3d-macros = { path = "crates/macros", version = "0.0.1" }
 manifold3d-sys = { version = "0.0.3" }
-nalgebra = { version = "0.33.0", optional = true }
+thiserror = "2.0.3"
 
 [features]
-nalgebra_interop = ["nalgebra"]
+nalgebra_interop = ["manifold3d-types/nalgebra_interop"]
 export = ["manifold3d-sys/export"]
 parallel = ["manifold3d-sys/parallel"]
+
+[workspace]
+members = [
+    "crates/macros",
+    "crates/tests",
+    "crates/types"
+]

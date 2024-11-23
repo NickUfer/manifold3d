@@ -1,5 +1,9 @@
-use crate::types::{Point2, PositiveI32};
-use manifold3d_sys::{manifold_alloc_simple_polygon, manifold_delete_simple_polygon, manifold_simple_polygon, manifold_simple_polygon_get_point, manifold_simple_polygon_length, ManifoldSimplePolygon, ManifoldVec2};
+use crate::types::math::{Point2, PositiveI32};
+use manifold3d_sys::{
+    manifold_alloc_simple_polygon, manifold_delete_simple_polygon, manifold_simple_polygon,
+    manifold_simple_polygon_get_point, manifold_simple_polygon_length, ManifoldSimplePolygon,
+    ManifoldVec2,
+};
 use std::os::raw::{c_int, c_void};
 
 pub struct SimplePolygon(*mut ManifoldSimplePolygon);

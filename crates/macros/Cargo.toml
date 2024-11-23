@@ -1,0 +1,17 @@
+[package]
+name = "manifold3d-macros"
+description = "Macros for the manifold3d crate. An internal dependency"
+homepage = "https://github.com/NickUfer/manifold3d-rs"
+repository = "https://github.com/NickUfer/manifold3d-rs/tree/master/crates/macros"
+license = "Apache-2.0"
+version = "0.0.1"
+edition = "2021"
+include = ["/src", "/LICENSE"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = "2.0.89"
+quote = "1.0.37"
+proc-macro2 = "1.0.92"

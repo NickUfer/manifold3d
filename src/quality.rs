@@ -1,41 +1,41 @@
-use crate::types::{NormalizedAngle, PositiveF64, PositiveI32};
+use crate::types::math::{NormalizedAngle, PositiveF64, PositiveI32};
 use manifold3d_sys::{
     manifold_get_circular_segments, manifold_reset_to_circular_defaults,
     manifold_set_circular_segments, manifold_set_min_circular_angle,
     manifold_set_min_circular_edge_length,
 };
-use std::num::NonZeroI32;
 
 pub fn set_min_circular_angle(angle: NormalizedAngle) {
     unsafe { manifold_set_min_circular_angle(angle.as_degrees()) }
 }
 
-pub fn set_min_circular_angle_unchecked(angle: f64) {
-    unsafe { manifold_set_min_circular_angle(angle) }
+pub unsafe fn set_min_circular_angle_unchecked(angle: f64) {
+    manifold_set_min_circular_angle(angle)
 }
 
 pub fn set_min_circular_edge_length(length: PositiveF64) {
     unsafe { manifold_set_min_circular_edge_length(length.get()) }
 }
 
-pub fn set_min_circular_edge_length_unchecked(length: f64) {
-    unsafe { manifold_set_min_circular_edge_length(length) }
+pub unsafe fn set_min_circular_edge_length_unchecked(length: f64) {
+    manifold_set_min_circular_edge_length(length)
 }
 
 pub fn set_circular_segments(segments: PositiveI32) {
     unsafe { manifold_set_circular_segments(segments.get()) }
 }
 
-pub fn set_circular_segments_unchecked(segments: i32) {
-    unsafe { manifold_set_circular_segments(segments) }
+pub unsafe fn set_circular_segments_unchecked(segments: i32) {
+    manifold_set_circular_segments(segments)
 }
 
-pub fn get_circular_segments(radius: PositiveF64) -> NonZeroI32 {
-    unsafe { NonZeroI32::new_unchecked(manifold_get_circular_segments(radius.get())) }
+pub fn get_circular_segments(radius: PositiveF64) -> PositiveI32 {
+    let segments = unsafe { manifold_get_circular_segments(radius.get()) };
+    PositiveI32::new(segments).unwrap()
 }
 
-pub fn get_circular_segments_unchecked(radius: f64) -> i32 {
-    unsafe { manifold_get_circular_segments(radius) }
+pub unsafe fn get_circular_segments_unchecked(radius: f64) -> i32 {
+    manifold_get_circular_segments(radius)
 }
 
 pub fn reset_to_circular_defaults() {
@@ -45,7 +45,7 @@ pub fn reset_to_circular_defaults() {
 #[cfg(test)]
 mod tests {
     use crate::quality::*;
-    use crate::types::{NormalizedAngle, PositiveF64, PositiveI32};
+    use crate::types::math::{NormalizedAngle, PositiveF64, PositiveI32};
 
     #[test]
     fn test_set_and_get_circular_segments() {
