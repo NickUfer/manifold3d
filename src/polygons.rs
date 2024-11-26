@@ -1,7 +1,7 @@
 use crate::error::{check_error, Error};
 use crate::manifold::Manifold;
 use crate::simple_polygon::SimplePolygon;
-use crate::types::math::{NormalizedAngle, PositiveF64, PositiveI32, Vec2};
+use crate::types::{NormalizedAngle, PositiveF64, PositiveI32, Vec2};
 use manifold3d_sys::{
     manifold_alloc_manifold, manifold_alloc_polygons, manifold_alloc_simple_polygon,
     manifold_delete_polygons, manifold_extrude, manifold_polygons, manifold_polygons_get_simple,

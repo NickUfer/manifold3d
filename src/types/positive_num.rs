@@ -1,4 +1,3 @@
-use crate::math;
 use std::cmp::Ordering;
 use thiserror::Error;
 
@@ -12,9 +11,9 @@ pub enum PositiveNumError {
 pub struct PositiveNum<T: num_traits::Num + Clone + Copy + PartialOrd>(T);
 
 impl<T: num_traits::Num + Copy + PartialOrd> PositiveNum<T> {
-    pub fn new(value: T) -> Result<Self, math::PositiveNumError> {
+    pub fn new(value: T) -> Result<Self, PositiveNumError> {
         if !Self::is_valid(value) {
-            return Err(math::PositiveNumError::NonPositiveValue);
+            return Err(PositiveNumError::NonPositiveValue);
         }
         Ok(PositiveNum(value))
     }

@@ -1,8 +1,6 @@
 use crate::bounding_box::BoundingBox;
 use crate::error::{check_error, Error};
 use crate::mesh_gl::MeshGL;
-use crate::types::manifold::vertex;
-use crate::types::math::{PositiveF64, PositiveI32, Vec3};
 use manifold3d_sys::{
     manifold_alloc_box, manifold_alloc_manifold, manifold_alloc_manifold_vec,
     manifold_alloc_meshgl, manifold_batch_boolean, manifold_boolean, manifold_bounding_box,
@@ -15,14 +13,24 @@ use manifold3d_sys::{
     manifold_split_by_plane, manifold_tetrahedron, manifold_translate, manifold_trim_by_plane,
     manifold_union, manifold_warp, ManifoldManifold, ManifoldOpType,
 };
-use manifold3d_types::math::{NonNegativeF64, NonNegativeI32, NormalizedAngle};
 use std::os::raw::{c_int, c_void};
 use std::pin::Pin;
 use thiserror::Error;
 
+use crate::types::{
+    NonNegativeF64, NonNegativeI32, NormalizedAngle, PositiveF64, PositiveI32, Vec3,
+};
+
+pub use warp::*;
+
+/// Represents a manifold.
 pub struct Manifold(*mut ManifoldManifold);
 
 impl Manifold {
+    /// Creates a new tetrahedron manifold.
+    ///
+    /// # Returns
+    /// A [Manifold] representing a tetrahedron.
     pub fn new_tetrahedron() -> Manifold {
         let manifold_ptr = unsafe { manifold_alloc_manifold() };
         unsafe { manifold_tetrahedron(manifold_ptr as *mut c_void) };
@@ -32,7 +40,7 @@ impl Manifold {
     /// Constructs a 3D cuboid with the specified dimensions in the first octant of 3D space.
     ///
     /// By default, the cuboid's origin will be at the corner touching the coordinate system's origin
-    /// (i.e., the point (0, 0, 0)). If [origin_at_center] is set to `true`, the cuboid will be centered
+    /// (i.e., the point (0, 0, 0)). If `origin_at_center` is set to `true`, the cuboid will be centered
     /// at the origin, with its edges extending equally in all directions.
     ///
     /// # Returns
@@ -40,7 +48,7 @@ impl Manifold {
     ///
     /// # Examples
     /// ```
-    /// use manifold3d::types::math::PositiveF64;
+    /// use manifold3d::types::PositiveF64;
     /// use manifold3d::Manifold;
     ///
     /// // A cuboid of size 1x2x3, touching the origin in the first octant.
@@ -69,13 +77,16 @@ impl Manifold {
     /// Constructs a 3D cuboid with the specified dimensions in the first octant of 3D space.
     ///
     /// By default, the cuboid's origin will be at the corner touching the coordinate system's origin
-    /// (i.e., the point (0, 0, 0)). If [origin_at_center] is set to `true`, the cuboid will be centered
+    /// (i.e., the point (0, 0, 0)). If `origin_at_center` is set to `true`, the cuboid will be centered
     /// at the origin, with its edges extending equally in all directions.
     ///
     /// # Returns
     /// - If any dimension (`x_size`, `y_size`, or `z_size`) is negative, or if all dimensions are zero,
     ///   an empty `Manifold` will be returned.
     /// - Otherwise, a `Manifold` representing a cuboid with the specified dimensions will be created.
+    ///
+    /// # Safety
+    /// This function is unsafe because it does not check if the input is valid.
     ///
     /// # Examples
     /// ```
@@ -113,7 +124,7 @@ impl Manifold {
     /// Constructs a 3D cuboid with the specified dimensions in the first octant of 3D space.
     ///
     /// By default, the cuboid's origin will be at the corner touching the coordinate system's origin
-    /// (i.e., the point (0, 0, 0)). If [origin_at_center] is set to `true`, the cuboid will be centered
+    /// (i.e., the point (0, 0, 0)). If `origin_at_center` is set to `true`, the cuboid will be centered
     /// at the origin, with its edges extending equally in all directions.
     ///
     /// # Returns
@@ -121,9 +132,12 @@ impl Manifold {
     ///   an empty `Manifold` will be returned.
     /// - Otherwise, a `Manifold` representing a cuboid with the specified dimensions will be created.
     ///
+    /// # Safety
+    /// This function is unsafe because it does not check if the input is valid.
+    ///
     /// # Examples
     /// ```
-    /// use manifold3d::types::math::Vec3;
+    /// use manifold3d::types::Vec3;
     /// use manifold3d::Manifold;
     ///
     /// // A cuboid of size 1x2x3, touching the origin in the first octant.
@@ -159,6 +173,56 @@ impl Manifold {
         Self::new_cuboid_unchecked(size.x, size.y, size.z, origin_at_center)
     }
 
+    /// Creates a new cylinder with the specified attributes.
+    ///
+    /// # Arguments
+    /// * `height`: The height of the cylinder. Must be a value that can be converted to [PositiveF64].
+    /// * `bottom_radius`: The radius at the bottom of the cylinder. Must be a value that can be converted to [PositiveF64].
+    /// * `top_radius`: An optional radius at the top of the cylinder. If not provided, it defaults to the bottom radius.
+    /// * `circular_segments`: An optional number of circular segments used to approximate the shape. If not provided, the default global quality setting is used.
+    /// * `origin_at_center`: A boolean indicating whether the origin (0, 0, 0) should be at the center of the cylinder.
+    ///
+    /// # Returns
+    /// A new manifold representing a cylinder.
+    ///
+    /// # Examples
+    /// ```rust
+    /// use manifold3d::types::{PositiveF64, PositiveI32};
+    /// use manifold3d::Manifold;
+    ///
+    /// let height = PositiveF64::new(10.0).unwrap();
+    /// let bottom_radius = PositiveF64::new(5.0).unwrap();
+    /// let top_radius = PositiveF64::new(3.0).unwrap();
+    /// let circular_segments = PositiveI32::new(32).unwrap();
+    ///
+    /// let cylinder = Manifold::new_cylinder(
+    ///     height,
+    ///     bottom_radius,
+    ///     Some(top_radius),
+    ///     Some(circular_segments),
+    ///     true,
+    /// );
+    /// ```
+    ///
+    /// To create a cylinder with the same top and bottom radius:
+    ///
+    /// ```rust
+    /// use manifold3d::types::{PositiveF64, PositiveI32};
+    /// use manifold3d::Manifold;
+    ///
+    /// let height = PositiveF64::new(10.0).unwrap();
+    /// let bottom_radius = PositiveF64::new(5.0).unwrap();
+    /// let top_radius = PositiveF64::new(3.0).unwrap();
+    /// let circular_segments = 32u16;
+    ///
+    /// let cylinder = Manifold::new_cylinder(
+    ///     height,
+    ///     bottom_radius,
+    ///     None::<PositiveF64>,
+    ///     Some(circular_segments),
+    ///     false,
+    /// );
+    /// ```
     pub fn new_cylinder(
         height: impl Into<PositiveF64>,
         bottom_radius: impl Into<PositiveF64>,
@@ -182,6 +246,29 @@ impl Manifold {
         }
     }
 
+    /// Creates a new cylinder manifold with the given height, bottom radius, top radius, number of circular segments, and origin.
+    ///
+    /// # Arguments
+    /// * `height`: The height of the cylinder.
+    /// * `bottom_radius`: The radius of the bottom circle of the cylinder.
+    /// * `top_radius`: The radius of the top circle of the cylinder.
+    /// * `circular_segments`: The number of circular segments to use when constructing the cylinder.
+    /// * `origin_at_center`: If true, the origin of the cylinder will be at its center. Otherwise, the origin will be at the bottom center.
+    ///
+    /// # Returns
+    /// A new manifold representing the cylinder.
+    ///
+    /// # Safety
+    /// This function is unsafe because it does not check if the input is valid.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::Manifold;
+    ///
+    /// let cylinder = unsafe {
+    ///     Manifold::new_cylinder_unchecked(1.0, 0.5, 0.5, 32, true)
+    /// };
+    /// ```
     pub unsafe fn new_cylinder_unchecked(
         height: impl Into<f64>,
         bottom_radius: impl Into<f64>,
@@ -211,6 +298,24 @@ impl Manifold {
         unsafe { Self::new_sphere_unchecked(radius.into(), circular_segments) }.unwrap()
     }
 
+    /// Creates a new sphere manifold with the given radius and number of circular segments.
+    ///
+    /// # Arguments
+    /// * `radius`: The radius of the sphere.
+    /// * `circular_segments`: The number of circular segments used to approximate the sphere.
+    ///
+    /// # Returns
+    /// A [Result] containing the new manifold if successful, and an [Error] if not.
+    ///
+    /// # Safety
+    /// This function is unsafe because it does not check if the input is valid.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::Manifold;
+    ///
+    /// let sphere = unsafe { Manifold::new_sphere_unchecked(1.0, 30) }.unwrap();
+    /// ```
     pub unsafe fn new_sphere_unchecked(
         radius: impl Into<f64>,
         circular_segments: impl Into<f64>,
@@ -259,7 +364,7 @@ impl Manifold {
             return self.clone();
         }
         // Check includes self in vec
-        if others.len() >= usize::MAX {
+        if others.len() == usize::MAX {
             panic!("Batch operation exceeds maximum allowed count of elements")
         }
 
@@ -322,16 +427,16 @@ impl Manifold {
         )
     }
 
-    pub fn split_by_plane(&self, plane: Plane) -> (Manifold, Manifold) {
+    pub fn split_by_offset_plane(&self, offset_plane: OffsetPlane) -> (Manifold, Manifold) {
         let manifold_pair = unsafe {
             manifold_split_by_plane(
                 manifold_alloc_manifold() as *mut c_void,
                 manifold_alloc_manifold() as *mut c_void,
                 self.0,
-                plane.x_normal,
-                plane.y_normal,
-                plane.z_normal,
-                plane.offset,
+                offset_plane.plane.normal.x,
+                offset_plane.plane.normal.y,
+                offset_plane.plane.normal.z,
+                offset_plane.offset,
             )
         };
         (
@@ -340,15 +445,15 @@ impl Manifold {
         )
     }
 
-    pub fn trim_by_plane(&self, plane: Plane) -> Manifold {
+    pub fn trim_by_offset_plane(&self, offset_plane: OffsetPlane) -> Manifold {
         let manifold_ptr = unsafe {
             manifold_trim_by_plane(
                 manifold_alloc_manifold() as *mut c_void,
                 self.0,
-                plane.x_normal,
-                plane.y_normal,
-                plane.z_normal,
-                plane.offset,
+                offset_plane.plane.normal.x,
+                offset_plane.plane.normal.y,
+                offset_plane.plane.normal.z,
+                offset_plane.offset,
             )
         };
         Manifold::from_ptr(manifold_ptr)
@@ -356,6 +461,23 @@ impl Manifold {
 
     // Transformations
 
+    /// Moves the manifold in space. This operation can be chained. Transforms are
+    /// combined and applied lazily.
+    ///
+    /// # Arguments
+    /// * `translation`: The vector to add to every vertex.
+    ///
+    /// # Returns
+    /// [Manifold]: The translated manifold.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::types::Vec3;
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let translated_manifold = manifold.translate(Vec3::new(1.0, 2.0, 3.0));
+    /// ```
     pub fn translate(&self, translation: impl Into<Vec3>) -> Manifold {
         let translation = translation.into();
         let manifold_ptr = unsafe {
@@ -370,6 +492,22 @@ impl Manifold {
         Manifold::from_ptr(manifold_ptr)
     }
 
+    /// Rotates the manifold using the given rotation vector.
+    ///
+    /// # Arguments
+    /// * `rotation`: The rotation vector.
+    ///
+    /// # Returns
+    /// A new rotated manifold object.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::types::Vec3;
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let rotated_manifold = manifold.rotate(Vec3::new(0.0, 45.0, 45.0));
+    /// ```
     pub fn rotate(&self, rotation: impl Into<Vec3>) -> Manifold {
         let rotation = rotation.into();
         let manifold_ptr = unsafe {
@@ -384,6 +522,23 @@ impl Manifold {
         Manifold::from_ptr(manifold_ptr)
     }
 
+    /// Scales the manifold in space. This operation can be chained. Transforms are
+    /// combined and applied lazily.
+    ///
+    /// # Arguments
+    /// * `scale`: The vector to multiply every vertex by per component.
+    ///
+    /// # Returns
+    /// A new scaled manifold object.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::types::Vec3;
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let scaled_manifold = manifold.scale(Vec3::new(2.0, 2.0, 2.0));
+    /// ```
     pub fn scale(&self, scale: impl Into<Vec3>) -> Manifold {
         let scale = scale.into();
         let manifold_ptr = unsafe {
@@ -398,21 +553,73 @@ impl Manifold {
         Manifold::from_ptr(manifold_ptr)
     }
 
-    pub fn mirror(&self, scale: impl Into<Vec3>) -> Manifold {
-        let scale = scale.into();
+    /// Mirrors the manifold over the plane described by the given [Plane].
+    ///
+    /// # Arguments
+    /// * `plane`: The plane to be mirrored over.
+    ///
+    /// # Returns
+    /// A new manifold object that is the result of mirroring this manifold over the given plane.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::manifold::Plane;
+    /// use manifold3d::types::Vec3;
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let plane = Plane::new(Vec3::new(1.0, 0.0, 0.0));
+    /// let mirrored_manifold = manifold.mirror(plane);
+    /// ```
+    pub fn mirror(&self, plane: Plane) -> Manifold {
         let manifold_ptr = unsafe {
             manifold_mirror(
                 manifold_alloc_manifold() as *mut c_void,
                 self.0,
-                scale.x,
-                scale.y,
-                scale.z,
+                plane.normal.x,
+                plane.normal.y,
+                plane.normal.z,
             )
         };
         Manifold::from_ptr(manifold_ptr)
     }
 
-    pub fn warp(&self, warp: Pin<&impl vertex::Warp>) -> Manifold {
+    /// Warps the manifold by applying a transformation function to each vertex.
+    ///
+    /// The topology of the manifold remains unchanged.
+    ///
+    /// # Arguments
+    /// * `warp`: A pinned reference to a type implementing the [Warp] trait.
+    ///   This warp object defines the transformation logic.
+    ///
+    /// # Returns
+    /// A new manifold object representing the warped manifold.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::macros::manifold_warp;
+    /// use manifold3d::manifold::WarpVertex;
+    /// use manifold3d::types::Point3;
+    /// use manifold3d::Manifold;
+    /// use std::pin::Pin;
+    ///
+    /// // Users are advised to use the manifold_warp macro to automatically implement
+    /// // Warp and WarpExternCFn and only implement the WarpVertex trait themselves
+    /// #[manifold_warp]
+    /// struct MyWarp;
+    ///
+    /// impl WarpVertex for MyWarp {
+    ///     fn warp_vertex(&self, vertex: Point3) -> Point3 {
+    ///         // Example: Translate the vertex by (1.0, 2.0, 3.0)
+    ///         Point3::new(vertex.x + 1.0, vertex.y + 2.0, vertex.z + 3.0)
+    ///     }
+    /// }
+    ///
+    /// let manifold = Manifold::new_tetrahedron();
+    /// let warp = MyWarp;
+    /// let warped_manifold = manifold.warp(Pin::new(&warp));
+    /// ```
+    pub fn warp(&self, warp: Pin<&impl Warp>) -> Manifold {
         let warp_ptr = &raw const *warp;
         let manifold_ptr = unsafe {
             manifold_warp(
@@ -426,34 +633,126 @@ impl Manifold {
         Manifold::from_ptr(manifold_ptr)
     }
 
-    pub fn smooth_by_normals(&self, vertex_normal_property_index: NonNegativeI32) -> Manifold {
+    /// Smooths the manifold by filling in the halfedge tangent vectors.
+    ///
+    /// The geometry remains unchanged until [Manifold#refine_via_edge_splits](Manifold#method.refine_via_edge_splits)
+    /// or [Manifold#refine_to_tolerance](Manifold#method.refine_to_tolerance) is called to interpolate the surface.
+    ///
+    /// This function uses the vertex normal properties of the manifold to define the tangent vectors.
+    ///
+    /// Faces of two coplanar triangles will be marked as quads, while faces with three or more coplanar triangles will be flat.
+    ///
+    /// # Parameters
+    /// * `vertex_normal_property_index`: The first property channel of the normals.
+    ///   Any vertex where multiple normals exist and don't agree will result in a sharp edge.
+    ///
+    /// # Returns
+    /// A new manifold object with filled halfedge tangent vectors.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use manifold3d::types::NonNegativeI32;
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold = Manifold::new_tetrahedron();
+    /// // TODO check if normals are always present
+    ///
+    /// // In this example the first property of the normal vertex is in the 4th channel.
+    /// // 1-3th channel = position xyz
+    /// // 4-6th channel = normal xyz
+    /// let vertex_normal_property_index = NonNegativeI32::new(4).unwrap();
+    ///
+    /// let smoothed_manifold = manifold.smooth_by_normals(vertex_normal_property_index);
+    /// ```
+    pub fn smooth_by_normals(
+        &self,
+        vertex_normal_property_index: impl Into<NonNegativeI32>,
+    ) -> Manifold {
         let manifold_ptr = unsafe {
             manifold_smooth_by_normals(
                 manifold_alloc_manifold() as *mut c_void,
                 self.0,
-                vertex_normal_property_index.into(),
+                vertex_normal_property_index.into().into(),
             )
         };
         Manifold::from_ptr(manifold_ptr)
     }
 
+    /// Smooths the manifold by filling in the halfedge tangent vectors.
+    ///
+    /// The geometry remains unchanged until [Manifold#refine_via_edge_splits](Manifold#method.refine_via_edge_splits)
+    /// or [Manifold#refine_to_tolerance](Manifold#method.refine_to_tolerance) is called to interpolate the surface.
+    /// This function uses the geometry of the triangles and pseudo-normals to define the tangent vectors.
+    /// Faces of two coplanar triangles will be marked as quads.
+    ///
+    /// # Arguments
+    /// * `minimum_sharpness_angle`: Angle in degrees. Any edges with angles greater than this value will remain sharp.
+    ///   The rest will be smoothed to G1 continuity, with the caveat that flat faces of three or more triangles will always remain flat.
+    ///   With a value of zero, the model is faceted.
+    /// * `minimum_smoothness`: The smoothness applied to sharp angles. The default gives a hard edge,
+    ///   while values > 0 will give a small fillet on these sharp edges.
+    ///   A value of 1 is equivalent to a `minimum_sharpness_angle` of 180 - all edges will be smooth.
+    ///
+    /// # Returns
+    /// A new manifold object with filled halfedge tangent vectors.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::manifold::MinimumSmoothness;
+    /// use manifold3d::types::NormalizedAngle;
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    ///
+    /// let angle = NormalizedAngle::from_degrees(60.0);
+    /// let minimum_smoothness = MinimumSmoothness::new(MinimumSmoothness::MINIMUM).unwrap();
+    /// let smoothed_manifold = manifold.smooth_out(angle, minimum_smoothness);
+    /// ```
     pub fn smooth_out(
         &self,
-        min_sharp_angle: NormalizedAngle,
-        min_smoothness: MinimumSmoothness,
+        minimum_sharpness_angle: NormalizedAngle,
+        minimum_smoothness: MinimumSmoothness,
     ) -> Manifold {
         let manifold_ptr = unsafe {
             manifold_smooth_out(
                 manifold_alloc_manifold() as *mut c_void,
                 self.0,
-                min_sharp_angle.into(),
-                min_smoothness.into(),
+                minimum_sharpness_angle.into(),
+                minimum_smoothness.into(),
             )
         };
         Manifold::from_ptr(manifold_ptr)
     }
 
-    fn refine_via_edge_splits(&self, edge_split_count: EdgeSplitCount) -> Manifold {
+    /// Increases the density of the mesh by splitting every edge into n pieces.
+    ///
+    /// For instance, with n = 2, each triangle will be split into 4 triangles. Quads
+    /// will ignore their interior triangle bisector.
+    ///
+    /// These will all be coplanar (and will not be immediately collapsed), unless the
+    /// [MeshGL]/[Manifold] has halfedge tangents specified (e.g. from [Manifold#smooth_out](Manifold#method.smooth_out))
+    /// in which case the new vertices will be moved to the interpolated surface according to
+    /// their barycentric coordinates.
+    ///
+    /// # Arguments
+    /// * `edge_split_count`: The number of pieces to split every edge into.
+    ///
+    /// # Returns
+    /// A new manifold object with increased density.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::manifold::EdgeSplitCount;
+    /// use manifold3d::types::PositiveI32;
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold = Manifold::new_tetrahedron();
+    ///
+    /// let edge_split_count = EdgeSplitCount::new(PositiveI32::new(2).unwrap()).unwrap();
+    /// let refined_manifold = manifold.refine_via_edge_splits(edge_split_count);
+    /// ```
+    pub fn refine_via_edge_splits(&self, edge_split_count: EdgeSplitCount) -> Manifold {
         let manifold_ptr = unsafe {
             manifold_refine(
                 manifold_alloc_manifold() as *mut c_void,
@@ -464,6 +763,37 @@ impl Manifold {
         Manifold::from_ptr(manifold_ptr)
     }
 
+    /// Increase the density of the mesh by splitting each edge into pieces of
+    /// roughly the input length.
+    ///
+    /// Interior verts are added to keep the rest of the triangulation edges also of roughly the same length.
+    ///
+    /// If halfedge tangents are present (e.g. from the [Manifold#smooth_out](Manifold#method.smooth_out)), the new
+    /// vertices will be moved to the interpolated surface according to their barycentric coordinates.
+    /// Quads will ignore their interior triangle bisector.
+    ///
+    /// # Arguments
+    /// * `edge_length`: The length that edges will be broken down to.
+    ///
+    /// # Returns
+    /// A new manifold object with increased density.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::types::{NonNegativeF64, PositiveF64};
+    /// use manifold3d::Manifold;
+    ///
+    /// // Create a manifold
+    /// let manifold = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
+    ///
+    /// // Refine the manifold to an edge length of 0.5
+    /// let refined_manifold = manifold.refine_to_edge_length(NonNegativeF64::new(0.5).unwrap());
+    /// ```
     pub fn refine_to_edge_length(&self, edge_length: NonNegativeF64) -> Manifold {
         let manifold_ptr = unsafe {
             manifold_refine_to_length(
@@ -475,6 +805,33 @@ impl Manifold {
         Manifold::from_ptr(manifold_ptr)
     }
 
+    /// Increases the density of the mesh by splitting each edge into pieces such that
+    /// any point on the resulting triangles is roughly within tolerance of the
+    /// smoothly curved surface defined by the tangent vectors.
+    ///
+    /// This means tightly curving regions will be divided more finely than smoother regions. If
+    /// halfedgeTangents are not present, the result will simply be a copy of the
+    /// original. Quads will ignore their interior triangle bisector.
+    ///
+    /// # Arguments
+    /// * `tolerance`: The desired maximum distance between the faceted mesh
+    ///   produced and the exact smoothly curving surface. All vertices are exactly on
+    ///   the surface, within rounding error.
+    ///
+    /// # Returns
+    /// A new manifold object with increased density.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::types::NonNegativeF64;
+    /// use manifold3d::Manifold;
+    ///
+    /// // Create a manifold
+    /// let manifold = Manifold::new_tetrahedron();
+    ///
+    /// // Refine the manifold to a tolerance of 0.1
+    /// let refined_manifold = manifold.refine_to_tolerance(NonNegativeF64::new(0.1).unwrap());
+    /// ```
     pub fn refine_to_tolerance(&self, tolerance: NonNegativeF64) -> Manifold {
         let manifold_ptr = unsafe {
             manifold_refine_to_tolerance(
@@ -486,28 +843,91 @@ impl Manifold {
         Manifold::from_ptr(manifold_ptr)
     }
 
+    /// Returns `true` if the manifold is empty.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use manifold3d::Manifold;
+    ///
+    /// let empty_manifold = Manifold::new_empty();
+    /// assert!(empty_manifold.is_empty());
+    ///
+    /// let tetrahedron_manifold = Manifold::new_tetrahedron();
+    /// assert!(!tetrahedron_manifold.is_empty());
+    /// ```
     pub fn is_empty(&self) -> bool {
         unsafe { manifold_is_empty(self.0) == 1 }
     }
 
+    /// Returns the number of vertices in the manifold.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// assert_eq!(manifold.vertex_count(), 8);
+    /// ```
     pub fn vertex_count(&self) -> usize {
         unsafe { manifold_num_vert(self.0) }
     }
 
+    /// Returns the number of edges in the manifold.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// assert_eq!(manifold.edge_count(), 18);
+    /// ```
     pub fn edge_count(&self) -> usize {
         unsafe { manifold_num_edge(self.0) }
     }
 
+    /// Returns the number of triangles in the manifold.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// assert_eq!(manifold.triangle_count(), 12);
+    /// ```
     pub fn triangle_count(&self) -> usize {
         unsafe { manifold_num_tri(self.0) }
     }
 
+    /// Returns a [MeshGL] representation of the manifold.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use manifold3d::{Manifold, MeshGL};
+    ///
+    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let mesh = manifold.mesh();
+    /// ```
     pub fn mesh(&self) -> MeshGL {
         let mesh_gl_ptr =
             unsafe { manifold_get_meshgl(manifold_alloc_meshgl() as *mut c_void, self.0) };
         MeshGL::from_ptr(mesh_gl_ptr)
     }
 
+    /// Returns the [BoundingBox] representing the bounds of the manifold.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use manifold3d::{BoundingBox, Manifold};
+    ///
+    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let bounding_box = manifold.bounding_box();
+    /// ```
     pub fn bounding_box(&self) -> BoundingBox {
         let bounding_box_ptr =
             unsafe { manifold_bounding_box(manifold_alloc_box() as *mut c_void, self.0) };
@@ -541,9 +961,13 @@ impl Drop for Manifold {
     }
 }
 
+/// Represents a boolean operation that can be performed on a [Manifold].
 pub enum BooleanOperation {
+    /// Represents a union or addition operation.
     Add,
+    /// Represents a subtraction operation.
     Subtract,
+    /// Represents an intersection operation.
     Intersect,
 }
 
@@ -557,8 +981,25 @@ impl From<BooleanOperation> for ManifoldOpType {
     }
 }
 
+/// Defines custom error types for handling minimum smoothness constraints.
 #[derive(Error, Debug)]
 pub enum MinimumSmoothnessError {
+    /// Error indicating that the provided smoothness value is out of bounds.
+    ///
+    /// # Arguments
+    /// - `minimum`: The minimum allowed value for smoothness. It is defined by [MinimumSmoothness::MINIMUM]
+    /// - `maximum`: The maximum allowed value for smoothness. It is defined by [MinimumSmoothness::MAXIMUM].
+    /// - `actual`: The actual value provided that is out of the allowed range.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::manifold::{MinimumSmoothness, MinimumSmoothnessError};
+    ///
+    /// match MinimumSmoothness::new(1.5) {
+    ///     Ok(_) => println!("Smoothness created successfully!"),
+    ///     Err(e) => println!("Error: {:?}", e),
+    /// }
+    /// ```
     #[error(
         "Minimum smoothness value must be between {minimum} and {maximum}. {actual} was provided"
     )]
@@ -569,12 +1010,40 @@ pub enum MinimumSmoothnessError {
     },
 }
 
+/// A struct representing a minimum smoothness value constrained within a specific range. The range
+/// is defined by minimum value [MinimumSmoothness::MINIMUM] and maximum value [MinimumSmoothness::MAXIMUM].
 pub struct MinimumSmoothness(f64);
 
 impl MinimumSmoothness {
-    const MINIMUM: f64 = 0.0;
-    const MAXIMUM: f64 = 1.0;
+    /// The minimum allowed value for smoothness.
+    pub const MINIMUM: f64 = 0.0;
 
+    /// The maximum allowed value for smoothness.
+    pub const MAXIMUM: f64 = 1.0;
+
+    /// Constructs a new `MinimumSmoothness` instance.
+    ///
+    /// # Arguments
+    /// - `smoothness`: The desired smoothness value.
+    ///
+    /// # Returns
+    /// - `Ok(MinimumSmoothness)`: If the provided smoothness value is within the allowed range.
+    /// - `Err(MinimumSmoothnessError)`: If the provided smoothness value is out of the allowed range.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::manifold::{MinimumSmoothness, MinimumSmoothnessError};
+    ///
+    /// fn create_smoothness(value: f64) -> Result<MinimumSmoothness, MinimumSmoothnessError> {
+    ///     MinimumSmoothness::new(value)
+    /// }
+    ///
+    /// let valid_smoothness = create_smoothness(0.5);
+    /// assert!(valid_smoothness.is_ok());
+    ///
+    /// let invalid_smoothness = create_smoothness(1.5);
+    /// assert!(invalid_smoothness.is_err());
+    /// ```
     pub fn new(smoothness: impl Into<f64>) -> Result<Self, MinimumSmoothnessError> {
         let smoothness = smoothness.into();
         if !(MinimumSmoothness::MINIMUM..=MinimumSmoothness::MAXIMUM).contains(&smoothness) {
@@ -587,8 +1056,15 @@ impl MinimumSmoothness {
         Ok(Self(smoothness))
     }
 
+    /// Returns the smoothness value.
     pub fn get(&self) -> f64 {
         self.0
+    }
+}
+
+impl Default for MinimumSmoothness {
+    fn default() -> Self {
+        Self::new(Self::MINIMUM).unwrap()
     }
 }
 
@@ -598,54 +1074,210 @@ impl From<MinimumSmoothness> for f64 {
     }
 }
 
+/// An error type representing possible errors when creating an [EdgeSplitCount].
 #[derive(Error, Debug)]
 pub enum EdgeSplitCountError {
+    /// Error variant indicating the provided edge split count is too small.
+    ///
+    /// The minimum required value is specified by `minimum` and the provided value
+    /// is specified by `actual`. The minimum is defined in [EdgeSplitCount::MINIMUM].
     #[error("Edge split count must be at least {minimum}. {actual} was provided")]
     TooSmall { minimum: i32, actual: i32 },
 }
 
+/// A wrapper around a positive integer representing the edge split count.
+///
+/// The edge split count must be at least the value specified by [EdgeSplitCount::MINIMUM].
 pub struct EdgeSplitCount(PositiveI32);
 
 impl EdgeSplitCount {
-    const MINIMUM_SPLIT_COUNT: i32 = 2;
+    pub const MINIMUM: i32 = 2;
 
+    /// Creates a new [EdgeSplitCount] if the provided number meets the minimum split count requirement.
+    ///
+    /// # Arguments
+    /// - `num`: A value that can be converted into a [PositiveI32].
+    ///
+    /// # Returns
+    /// This function returns a [Result], where the `Ok` variant contains the [EdgeSplitCount]
+    /// if the provided number is valid, and the `Err` variant contains an [EdgeSplitCountError]
+    /// if the number is too small.
+    ///
+    /// # Examples
+    /// ```
+    /// // Successful creation
+    /// use manifold3d::manifold::EdgeSplitCount;
+    /// use manifold3d::types::PositiveI32;
+    ///
+    /// let split_count = EdgeSplitCount::new(PositiveI32::new(3).unwrap());
+    /// assert!(split_count.is_ok());
+    ///
+    /// // Error due to too small a value
+    /// let split_count = EdgeSplitCount::new(PositiveI32::new(1).unwrap());
+    /// assert!(split_count.is_err());
+    /// ```
     pub fn new(num: impl Into<PositiveI32>) -> Result<Self, EdgeSplitCountError> {
         let num = num.into();
-        if num < EdgeSplitCount::MINIMUM_SPLIT_COUNT {
+        if num < EdgeSplitCount::MINIMUM {
             return Err(EdgeSplitCountError::TooSmall {
-                minimum: EdgeSplitCount::MINIMUM_SPLIT_COUNT,
+                minimum: EdgeSplitCount::MINIMUM,
                 actual: num.get(),
             });
         }
         Ok(Self(num))
     }
 
-    pub fn get(&self) -> i32 {
-        self.0.get()
+    /// Returns the internal [PositiveI32] value.
+    pub fn get(&self) -> PositiveI32 {
+        self.0
     }
 }
 
 impl From<EdgeSplitCount> for i32 {
     fn from(val: EdgeSplitCount) -> Self {
-        val.get()
+        val.get().get()
     }
 }
 
+/// Represents a plane in 3D space.
 pub struct Plane {
-    pub x_normal: f64,
-    pub y_normal: f64,
-    pub z_normal: f64,
-    pub offset: f64,
+    /// The normal vector of the plane.
+    pub normal: Vec3,
 }
 
 impl Plane {
+    /// Creates a new [Plane] from a given normal vector.
+    ///
+    /// # Arguments
+    /// * `normal`: The normal vector of the plane.
+    ///
+    /// # Returns
+    /// A new [Plane] object.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::manifold::Plane;
+    /// use manifold3d::types::Vec3;
+    ///
+    /// let normal = Vec3::new(0.0, 1.0, 0.0);
+    /// let plane = Plane::new(normal);
+    /// ```
     #[must_use]
-    pub fn new(x_normal: f64, y_normal: f64, z_normal: f64, offset: f64) -> Self {
-        Self {
-            x_normal,
-            y_normal,
-            z_normal,
-            offset,
-        }
+    pub fn new(normal: Vec3) -> Self {
+        Self { normal }
+    }
+}
+
+pub struct OffsetPlane {
+    /// The underlying plane.
+    pub plane: Plane,
+    /// The offset of the plane.
+    pub offset: f64,
+}
+
+/// Represents a plane with an offset in 3D space.
+impl OffsetPlane {
+    /// Creates a new [OffsetPlane] with the given plane and offset.
+    ///
+    /// # Arguments
+    /// * `plane`: The underlying plane: [Plane].
+    /// * `offset`: The offset of the plane.
+    ///
+    /// # Returns
+    /// A new [OffsetPlane] object.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::manifold::{OffsetPlane, Plane};
+    /// use manifold3d::types::Vec3;
+    ///
+    /// let plane = Plane::new(Vec3::new(0.0, 1.0, 0.0));
+    /// let offset_plane = OffsetPlane::new(plane, 1.0);
+    /// ```
+    #[must_use]
+    pub fn new(plane: Plane, offset: f64) -> Self {
+        Self { plane, offset }
+    }
+}
+
+mod warp {
+    use crate::types::Point3;
+
+    /// A trait that combines the functionality of [WarpVertex] and [ExternCWarpFn].
+    ///
+    /// This trait is automatically implemented by the [manifold3d::manifold_warp](crate::macros::manifold_warp)
+    /// macro, which ensures that both [WarpVertex] and [ExternCWarpFn] are implemented
+    /// for the annotated struct.
+    ///
+    /// # Context
+    /// [Warp] is used in conjunction with the [Manifold#warp](struct.Manifold.html#method.warp)
+    /// method to apply a transformation or deformation to a 3D manifold. The user needs to
+    /// implement the [WarpVertex] trait to define the specific transformation logic.
+    pub trait Warp: WarpVertex + ExternCWarpFn {}
+
+    /// A trait for defining vertex transformations.
+    ///
+    /// Implementing this trait allows you to define how individual vertices in a 3D
+    /// space are transformed. This is the core functionality that you need to implement
+    /// when using the [manifold3d::manifold_warp](crate::macros::manifold_warp) macro.
+    ///
+    /// # Example
+    /// ```
+    /// use manifold3d::macros::manifold_warp;
+    /// use manifold3d::manifold::WarpVertex;
+    /// use manifold3d::types::Point3;
+    ///
+    /// #[manifold_warp]
+    /// struct MyWarp;
+    ///
+    /// impl WarpVertex for MyWarp {
+    ///     fn warp_vertex(&self, vertex: Point3) -> Point3 {
+    ///         // Example: Translate the vertex by (1.0, 2.0, 3.0)
+    ///         Point3::new(vertex.x + 1.0, vertex.y + 2.0, vertex.z + 3.0)
+    ///     }
+    /// }
+    /// ```
+    pub trait WarpVertex {
+        /// Transforms a single vertex.
+        ///
+        /// # Arguments
+        /// - `vertex`: A point in 3D space to be transformed.
+        ///
+        /// # Returns
+        /// A new `Point3` representing the transformed vertex.
+        fn warp_vertex(&self, vertex: Point3) -> Point3;
+    }
+
+    /// A trait for providing an `extern "C"` function pointer for vertex transformations.
+    ///
+    /// This trait is automatically implemented by the
+    /// [manifold3d::manifold_warp](crate::macros::manifold_warp) macro. It provides
+    /// a function pointer that can be used in contexts requiring an `extern "C"` interface,
+    /// such as the [Manifold#warp](crate::manifold::Manifold#method.warp) function.
+    ///
+    /// Users typically do not need to implement this trait manually; instead, it is
+    /// derived by the macro.
+    ///
+    /// # Safety
+    /// The function pointer returned by this trait must be used correctly, adhering to
+    /// C-style calling conventions. Improper use can lead to undefined behavior.
+    pub trait ExternCWarpFn {
+        /// Returns a function pointer to an `extern "C"` function implementing the
+        /// vertex transformation logic.
+        ///
+        /// # Safety
+        /// - The caller must ensure that the `ctx` pointer passed to the function
+        ///   points to a valid instance of the struct implementing the trait.
+        ///
+        /// # Returns
+        /// An unsafe `extern "C"` function pointer that can be used to transform vertices.
+        fn extern_c_warp_fn(
+            &self,
+        ) -> unsafe extern "C" fn(
+            arg1: f64,
+            arg2: f64,
+            arg3: f64,
+            arg4: *mut ::std::os::raw::c_void,
+        ) -> manifold3d_sys::ManifoldVec3;
     }
 }

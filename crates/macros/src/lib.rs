@@ -31,7 +31,7 @@ pub fn manifold_warp(_attr: TokenStream, input: TokenStream) -> TokenStream {
         #structt
 
         const _: () = {
-            use manifold3d::types::manifold::vertex::WarpVertex;
+            use manifold3d::manifold::WarpVertex;
 
             #[no_mangle]
             #[doc(hidden)]
@@ -42,12 +42,12 @@ pub fn manifold_warp(_attr: TokenStream, input: TokenStream) -> TokenStream {
                 ctx: *mut ::std::os::raw::c_void
             ) -> manifold3d::sys::ManifoldVec3 {
                 let warp = &*(ctx as *mut #struct_ident);
-                let result = warp.warp_vertex(manifold3d::types::math::Point3::new(x, y, z));
+                let result = warp.warp_vertex(manifold3d::types::Point3::new(x, y, z));
                 result.into()
             }
 
             #[automatically_derived]
-            impl manifold3d::types::manifold::vertex::ExternCWarpFn for #struct_ident {
+            impl manifold3d::manifold::ExternCWarpFn for #struct_ident {
                 fn extern_c_warp_fn(&self) -> unsafe extern "C" fn(
                     f64,
                     f64,
@@ -60,7 +60,7 @@ pub fn manifold_warp(_attr: TokenStream, input: TokenStream) -> TokenStream {
         };
 
         #[automatically_derived]
-        impl manifold3d::types::manifold::vertex::Warp for #struct_ident {}
+        impl manifold3d::manifold::Warp for #struct_ident {}
     );
     output.into()
 }

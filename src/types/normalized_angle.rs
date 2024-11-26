@@ -1,4 +1,4 @@
-use crate::math;
+use crate::types::PositiveNum;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
 /// Represents an angle, measured in degrees, constrained to the range [-360.0, 360.0].
@@ -30,12 +30,12 @@ impl NormalizedAngle {
     }
 }
 
-impl<T> From<math::PositiveNum<T>> for NormalizedAngle
+impl<T> From<PositiveNum<T>> for NormalizedAngle
 where
     T: num_traits::Num + PartialOrd + Copy,
     f64: From<T>,
 {
-    fn from(value: math::PositiveNum<T>) -> Self {
+    fn from(value: PositiveNum<T>) -> Self {
         NormalizedAngle(f64::from(value.get()) % 360.0)
     }
 }
@@ -68,8 +68,8 @@ impl SubAssign for NormalizedAngle {
     }
 }
 
-impl Into<f64> for NormalizedAngle {
-    fn into(self) -> f64 {
-        self.get()
+impl From<NormalizedAngle> for f64 {
+    fn from(val: NormalizedAngle) -> Self {
+        val.get()
     }
 }

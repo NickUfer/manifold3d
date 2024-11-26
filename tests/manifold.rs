@@ -1,20 +1,20 @@
-use std::pin::Pin;
-use manifold3d::{types, BooleanOperation, Manifold};
+use manifold3d::manifold::BooleanOperation;
+use manifold3d::{types, Manifold};
 use manifold3d_macros::manifold_warp;
-use manifold3d_types::manifold::vertex;
+use std::pin::Pin;
 
 #[test]
 fn test_translation() {
     let original = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
-    let translated = original.translate(types::math::Vec3::new(1.0, -1.0, 3.0));
+    let translated = original.translate(types::Vec3::new(1.0, -1.0, 3.0));
 
     assert_eq!(
         translated.bounding_box().min_point(),
-        types::math::Point3::new(0.5, -1.5, 2.5)
+        types::Point3::new(0.5, -1.5, 2.5)
     );
     assert_eq!(
         translated.bounding_box().max_point(),
-        types::math::Point3::new(1.5, -0.5, 3.5)
+        types::Point3::new(1.5, -0.5, 3.5)
     );
 }
 
@@ -24,7 +24,7 @@ fn test_boolean_subtraction() {
     let expected_bounding_box = manifold.bounding_box();
 
     let other =
-        Manifold::new_cuboid(1u8, 1u8, 1u8, true).translate(types::math::Vec3::new(0.0, 0.5, 0.0));
+        Manifold::new_cuboid(1u8, 1u8, 1u8, true).translate(types::Vec3::new(0.0, 0.5, 0.0));
     let result = manifold.boolean(&other, BooleanOperation::Subtract);
     let result_bounding_box = result.bounding_box();
 
@@ -43,14 +43,10 @@ fn test_batch_boolean_subtraction() {
 
     // Removes all edges to form a cross
     let others = vec![
-        Manifold::new_cuboid(1u8, 1u8, 1u8, true)
-            .translate(types::math::Vec3::new(0.75, 0.75, 0.0)),
-        Manifold::new_cuboid(1u8, 1u8, 1u8, true)
-            .translate(types::math::Vec3::new(-0.75, -0.75, 0.0)),
-        Manifold::new_cuboid(1u8, 1u8, 1u8, true)
-            .translate(types::math::Vec3::new(0.75, -0.75, 0.0)),
-        Manifold::new_cuboid(1u8, 1u8, 1u8, true)
-            .translate(types::math::Vec3::new(-0.75, 0.75, 0.0)),
+        Manifold::new_cuboid(1u8, 1u8, 1u8, true).translate(types::Vec3::new(0.75, 0.75, 0.0)),
+        Manifold::new_cuboid(1u8, 1u8, 1u8, true).translate(types::Vec3::new(-0.75, -0.75, 0.0)),
+        Manifold::new_cuboid(1u8, 1u8, 1u8, true).translate(types::Vec3::new(0.75, -0.75, 0.0)),
+        Manifold::new_cuboid(1u8, 1u8, 1u8, true).translate(types::Vec3::new(-0.75, 0.75, 0.0)),
     ];
     let result = manifold.batch_boolean(&others, BooleanOperation::Subtract);
 
@@ -61,17 +57,17 @@ fn test_batch_boolean_subtraction() {
 fn test_linear_warping() {
     #[manifold_warp]
     pub struct TranslationWarp {
-        translation: types::math::Vec3,
+        translation: types::Vec3,
     }
 
-    impl vertex::WarpVertex for TranslationWarp {
-        fn warp_vertex(&self, vertex: types::math::Point3) -> types::math::Point3 {
-            let result = types::math::Point3::new(
+    impl manifold3d::manifold::WarpVertex for TranslationWarp {
+        fn warp_vertex(&self, vertex: types::Point3) -> types::Point3 {
+            
+            types::Point3::new(
                 vertex.x + self.translation.x,
                 vertex.y + self.translation.y,
                 vertex.z + self.translation.z,
-            );
-            result
+            )
         }
     }
 
@@ -79,7 +75,7 @@ fn test_linear_warping() {
     let expected_bounding_box = manifold.bounding_box();
 
     let translation_warp = TranslationWarp {
-        translation: types::math::Vec3::new(1.0, 1.0, 1.0),
+        translation: types::Vec3::new(1.0, 1.0, 1.0),
     };
 
     let translation_warp = Pin::new(&translation_warp);

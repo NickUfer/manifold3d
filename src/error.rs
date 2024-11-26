@@ -78,7 +78,10 @@ mod tests {
     #[test]
     fn test_error_from_u32() {
         // Checks whether the error discrimination works at all
-        assert_eq!(crate::Error::from(manifold3d_sys::ManifoldError_MANIFOLD_NO_ERROR), crate::Error::NoError);
+        assert_eq!(
+            crate::Error::from(manifold3d_sys::ManifoldError_MANIFOLD_NO_ERROR),
+            crate::Error::NoError
+        );
         assert_eq!(
             crate::Error::from(manifold3d_sys::ManifoldError_MANIFOLD_NON_FINITE_VERTEX),
             crate::Error::NonFiniteVertex

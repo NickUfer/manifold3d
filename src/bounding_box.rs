@@ -1,4 +1,4 @@
-use crate::types::math::{Matrix4x3, Point3, Vec3};
+use crate::types::{Matrix4x3, Point3, Vec3};
 use manifold3d_sys::{
     manifold_alloc_box, manifold_box, manifold_box_center, manifold_box_contains_box,
     manifold_box_contains_pt, manifold_box_dimensions, manifold_box_does_overlap_box,
