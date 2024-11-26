@@ -3,7 +3,7 @@ name = "manifold3d"
 description = "Bindings for Manifold - a Geometry library for topological robustness"
 homepage = "https://github.com/NickUfer/manifold3d-rs"
 license = "Apache-2.0"
-version = "0.0.3"
+version = "0.0.4"
 edition = "2021"
 include = [
     "/src",
@@ -16,7 +16,7 @@ include = [
 crate-type = ["cdylib", "rlib", "staticlib"]
 
 [dependencies]
-manifold3d-macros = { path = "crates/macros", version = "0.0.1" }
+manifold3d-macros = { path = "crates/macros", version = "0.0.2" }
 manifold3d-sys = { version = "0.0.3" }
 thiserror = "2.0.3"
 num-traits = "0.2.19"
