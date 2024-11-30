@@ -4,29 +4,35 @@ use crate::mesh_gl::MeshGL;
 use manifold3d_sys::{
     manifold_alloc_box, manifold_alloc_manifold, manifold_alloc_manifold_vec,
     manifold_alloc_meshgl, manifold_batch_boolean, manifold_boolean, manifold_bounding_box,
-    manifold_copy, manifold_cube, manifold_cylinder, manifold_delete_manifold, manifold_difference,
-    manifold_empty, manifold_get_meshgl, manifold_intersection, manifold_is_empty,
-    manifold_manifold_vec, manifold_manifold_vec_set, manifold_mirror, manifold_num_edge,
-    manifold_num_tri, manifold_num_vert, manifold_of_meshgl, manifold_refine,
-    manifold_refine_to_length, manifold_refine_to_tolerance, manifold_scale,
-    manifold_smooth_by_normals, manifold_smooth_out, manifold_sphere, manifold_split,
-    manifold_split_by_plane, manifold_tetrahedron, manifold_translate, manifold_trim_by_plane,
-    manifold_union, manifold_warp, ManifoldManifold, ManifoldOpType,
+    manifold_calculate_normals, manifold_copy, manifold_cube, manifold_cylinder,
+    manifold_delete_manifold, manifold_difference, manifold_empty, manifold_epsilon,
+    manifold_genus, manifold_get_circular_segments, manifold_get_meshgl, manifold_intersection,
+    manifold_is_empty, manifold_manifold_vec, manifold_manifold_vec_set, manifold_mirror,
+    manifold_num_edge, manifold_num_prop, manifold_num_tri, manifold_num_vert, manifold_of_meshgl,
+    manifold_original_id, manifold_refine, manifold_refine_to_length, manifold_refine_to_tolerance,
+    manifold_scale, manifold_set_properties, manifold_smooth_by_normals, manifold_smooth_out,
+    manifold_sphere, manifold_split, manifold_split_by_plane, manifold_surface_area,
+    manifold_tetrahedron, manifold_translate, manifold_trim_by_plane, manifold_union,
+    manifold_volume, manifold_warp, ManifoldManifold, ManifoldOpType,
 };
 use std::os::raw::{c_int, c_void};
-use std::pin::Pin;
+use std::pin::{pin, Pin};
 use thiserror::Error;
 
 use crate::types::{
     NonNegativeF64, NonNegativeI32, NormalizedAngle, PositiveF64, PositiveI32, Vec3,
 };
 
+pub use crate::macros::manifold::*;
+pub use properties::*;
 pub use warp::*;
 
 /// Represents a manifold.
 pub struct Manifold(*mut ManifoldManifold);
 
 impl Manifold {
+    // Constructors
+
     /// Creates a new tetrahedron manifold.
     ///
     /// # Returns
@@ -265,9 +271,7 @@ impl Manifold {
     /// ```
     /// use manifold3d::Manifold;
     ///
-    /// let cylinder = unsafe {
-    ///     Manifold::new_cylinder_unchecked(1.0, 0.5, 0.5, 32, true)
-    /// };
+    /// let cylinder = unsafe { Manifold::new_cylinder_unchecked(1.0, 0.5, 0.5, 32, true) };
     /// ```
     pub unsafe fn new_cylinder_unchecked(
         height: impl Into<f64>,
@@ -305,7 +309,7 @@ impl Manifold {
     /// * `circular_segments`: The number of circular segments used to approximate the sphere.
     ///
     /// # Returns
-    /// A [Result] containing the new manifold if successful, and an [Error] if not.
+    /// A [Result] containing the new manifold if successful, and a [crate::Error] if not.
     ///
     /// # Safety
     /// This function is unsafe because it does not check if the input is valid.
@@ -347,6 +351,35 @@ impl Manifold {
     }
 
     // Boolean Operations
+
+    /// The central operation of this library: the Boolean combines two manifolds
+    /// into another by calculating their intersections and removing the unused
+    /// portions.
+    /// [&epsilon;-valid](https://github.com/elalish/manifold/wiki/Manifold-Library#definition-of-%CE%B5-valid)
+    /// inputs will produce &epsilon;-valid output. &epsilon;-invalid input may fail
+    /// triangulation.
+    ///
+    /// These operations are optimized to produce nearly-instant results if either
+    /// input is empty or their bounding boxes do not overlap.
+    ///
+    /// # Arguments
+    ///
+    /// * `other`: The other manifold.
+    /// * `operation`: The type of operation to perform.
+    ///
+    /// # Returns
+    /// The result of the boolean operation.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::manifold::BooleanOperation;
+    /// use manifold3d::types::Vec3;
+    /// use manifold3d::Manifold;
+    ///
+    /// let a = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let b = Manifold::new_cuboid(1u8, 1u8, 1u8, true).translate(Vec3::new(0.5, 0.5, 0.5));
+    /// let result = a.boolean(&b, BooleanOperation::Add);
+    /// ```
     pub fn boolean(&self, other: &Manifold, operation: BooleanOperation) -> Manifold {
         let manifold_ptr = unsafe {
             manifold_boolean(
@@ -359,6 +392,30 @@ impl Manifold {
         Manifold::from_ptr(manifold_ptr)
     }
 
+    /// Perform the given boolean operation on a list of manifolds. In case of
+    /// Subtract, all Manifolds in the tail are differenced from the head.
+    ///
+    /// # Arguments
+    ///
+    /// * `others`: The other Manifolds.
+    /// * `operation`: The type of operation to perform.
+    ///
+    /// # Returns
+    ///
+    /// A new manifold object representing the result from the boolean operations.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::manifold::BooleanOperation;
+    /// use manifold3d::types::{PositiveF64, PositiveI32};
+    /// use manifold3d::Manifold;
+    ///
+    /// let a = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let b = Manifold::new_sphere(PositiveF64::new(0.5).unwrap(), None::<PositiveI32>);
+    /// let c = Manifold::new_tetrahedron();
+    ///
+    /// let result = a.batch_boolean(&[b, c], BooleanOperation::Add);
+    /// ```
     pub fn batch_boolean(&self, others: &[Manifold], operation: BooleanOperation) -> Manifold {
         if others.is_empty() {
             return self.clone();
@@ -392,12 +449,61 @@ impl Manifold {
         Manifold::from_ptr(manifold_ptr)
     }
 
+    /// Returns the union of this manifold with another.
+    ///
+    /// # Arguments
+    /// * other: The other manifold to union with.
+    ///
+    /// # Returns
+    /// A new manifold representing the union of the two manifolds.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::manifold::Rotation;
+    /// use manifold3d::types::{NormalizedAngle, Vec3};
+    /// use manifold3d::Manifold;
+    ///
+    /// let a = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    ///
+    /// let b_rotation = Rotation::new(
+    ///     NormalizedAngle::from_degrees(0.0),
+    ///     NormalizedAngle::from_degrees(45.0),
+    ///     NormalizedAngle::from_degrees(45.0),
+    /// );
+    /// let b = Manifold::new_cuboid(1u8, 1u8, 1u8, true).rotate(b_rotation);
+    /// let c = a.union(&b);
+    /// ```
     pub fn union(&self, other: &Manifold) -> Manifold {
         let manifold_ptr =
             unsafe { manifold_union(manifold_alloc_manifold() as *mut c_void, self.0, other.0) };
         Manifold::from_ptr(manifold_ptr)
     }
 
+    /// Computes the difference between two manifold objects. This operation subtracts the
+    /// volume of `other` from `self`, effectively removing any overlapping portions.
+    ///
+    /// This functionality is equivalent to using [`Manifold::boolean`] with [`BooleanOperation::Subtract`].
+    ///
+    /// # Arguments
+    ///
+    /// * `other`: A reference to another manifold whose volume will be subtracted from `self`.
+    ///
+    /// # Returns
+    ///
+    /// A new manifold representing the result of the subtraction. The resulting shape contains
+    /// only the parts of `self` that are not intersected by `other`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use manifold3d::types::Vec3;
+    /// use manifold3d::Manifold;
+    ///
+    /// let a = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let b = Manifold::new_cuboid(1u8, 1u8, 1u8, true).translate(Vec3::new(0.0, 0.5, 0.5));
+    ///
+    /// let result_manifold = a.difference(&b);
+    /// ```
     pub fn difference(&self, other: &Manifold) -> Manifold {
         let manifold_ptr = unsafe {
             manifold_difference(manifold_alloc_manifold() as *mut c_void, self.0, other.0)
@@ -405,6 +511,31 @@ impl Manifold {
         Manifold::from_ptr(manifold_ptr)
     }
 
+    /// Computes the intersection between two manifold objects. This operation retains only
+    /// the volume where `self` and `other` overlap.
+    ///
+    /// This functionality is equivalent to using [`Manifold::boolean`] with [`BooleanOperation::Intersect`].
+    ///
+    /// # Arguments
+    ///
+    /// * `other`: A reference to another manifold, representing the second shape to intersect with `self`.
+    ///
+    /// # Returns
+    ///
+    /// A new manifold representing the result of the intersection. The resulting shape contains
+    /// only the common volume shared between `self` and `other`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use manifold3d::types::Vec3;
+    /// use manifold3d::Manifold;
+    ///
+    /// let a = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let b = Manifold::new_cuboid(1u8, 1u8, 1u8, true).translate(Vec3::new(0.0, 0.5, 0.5));
+    ///
+    /// let result_manifold = a.intersection(&b);
+    /// ```
     pub fn intersection(&self, other: &Manifold) -> Manifold {
         let manifold_ptr = unsafe {
             manifold_intersection(manifold_alloc_manifold() as *mut c_void, self.0, other.0)
@@ -412,6 +543,27 @@ impl Manifold {
         Manifold::from_ptr(manifold_ptr)
     }
 
+    /// Split cuts the manifold in two using the cutter manifold. The first result
+    /// is the intersection, second is the difference. This is more efficient than
+    /// doing them separately.
+    ///
+    /// # Arguments
+    /// * `other`: The cutter manifold.
+    ///
+    /// # Returns
+    /// A pair of manifolds. The first is the intersection, the second is the
+    /// difference.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::types::{PositiveF64, PositiveI32};
+    /// use manifold3d::Manifold;
+    ///
+    /// let a = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let b = Manifold::new_sphere(PositiveF64::new(1.0).unwrap(), None::<PositiveI32>);
+    ///
+    /// let (intersection, difference) = a.split(&b);
+    /// ```
     pub fn split(&self, other: &Manifold) -> (Manifold, Manifold) {
         let manifold_pair = unsafe {
             manifold_split(
@@ -427,6 +579,34 @@ impl Manifold {
         )
     }
 
+    /// Splits the manifold by an [OffsetPlane].
+    ///
+    /// # Arguments
+    /// * `offset_plane`: The plane to split the manifold by.
+    ///
+    /// # Returns
+    /// A tuple containing two manifolds. The first manifold contains all the parts of the original
+    /// manifold that are in front of the plane. The second manifold contains all the parts of the
+    /// original manifold that are behind the plane.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::manifold::{OffsetPlane, Plane};
+    /// use manifold3d::types::{PositiveF64, PositiveI32, Vec3};
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold = Manifold::new_cylinder(
+    ///     PositiveF64::new(5.0).unwrap(),
+    ///     PositiveF64::new(2.5).unwrap(),
+    ///     None::<PositiveF64>,
+    ///     None::<PositiveI32>,
+    ///     true,
+    /// );
+    ///
+    /// let plane = Plane::new(Vec3::new(0.0, 1.0, 0.0));
+    /// let offset_plane = OffsetPlane::new(plane, 0.0);
+    /// let (manifold_part1, manifold_part2) = manifold.split_by_offset_plane(offset_plane);
+    /// ```
     pub fn split_by_offset_plane(&self, offset_plane: OffsetPlane) -> (Manifold, Manifold) {
         let manifold_pair = unsafe {
             manifold_split_by_plane(
@@ -445,6 +625,27 @@ impl Manifold {
         )
     }
 
+    /// Identical to [Manifold::split_by_offset_plane](Manifold::split_by_offset_plane),
+    /// but calculating and returning only the first result.
+    ///
+    /// # Arguments
+    /// * `offset_plane`: The plane to trim the manifold by.
+    ///
+    /// # Returns
+    /// A new manifold representing the trimmed portion of the original manifold.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::manifold::{OffsetPlane, Plane};
+    /// use manifold3d::types::Vec3;
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    ///
+    /// let plane = Plane::new(Vec3::new(0.0, 1.0, 0.0));
+    /// let offset_plane = OffsetPlane::new(plane, 0.0);
+    /// let trimmed_manifold = manifold.trim_by_offset_plane(offset_plane);
+    /// ```
     pub fn trim_by_offset_plane(&self, offset_plane: OffsetPlane) -> Manifold {
         let manifold_ptr = unsafe {
             manifold_trim_by_plane(
@@ -502,21 +703,28 @@ impl Manifold {
     ///
     /// # Examples
     /// ```
-    /// use manifold3d::types::Vec3;
+    /// use manifold3d::manifold::Rotation;
+    /// use manifold3d::types::{NormalizedAngle, Vec3};
     /// use manifold3d::Manifold;
     ///
     /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
-    /// let rotated_manifold = manifold.rotate(Vec3::new(0.0, 45.0, 45.0));
+    ///
+    /// let rotation = Rotation::new(
+    ///     NormalizedAngle::from_degrees(0.0),
+    ///     NormalizedAngle::from_degrees(45.0),
+    ///     NormalizedAngle::from_degrees(45.0),
+    /// );
+    /// let rotated_manifold = manifold.rotate(rotation);
     /// ```
-    pub fn rotate(&self, rotation: impl Into<Vec3>) -> Manifold {
+    pub fn rotate(&self, rotation: impl Into<Rotation>) -> Manifold {
         let rotation = rotation.into();
         let manifold_ptr = unsafe {
             manifold_translate(
                 manifold_alloc_manifold() as *mut c_void,
                 self.0,
-                rotation.x,
-                rotation.y,
-                rotation.z,
+                rotation.x.get(),
+                rotation.y.get(),
+                rotation.z.get(),
             )
         };
         Manifold::from_ptr(manifold_ptr)
@@ -597,7 +805,7 @@ impl Manifold {
     ///
     /// # Examples
     /// ```
-    /// use manifold3d::macros::manifold_warp;
+    /// use manifold3d::manifold;
     /// use manifold3d::manifold::WarpVertex;
     /// use manifold3d::types::Point3;
     /// use manifold3d::Manifold;
@@ -605,7 +813,7 @@ impl Manifold {
     ///
     /// // Users are advised to use the manifold_warp macro to automatically implement
     /// // Warp and WarpExternCFn and only implement the WarpVertex trait themselves
-    /// #[manifold_warp]
+    /// #[manifold::warp]
     /// struct MyWarp;
     ///
     /// impl WarpVertex for MyWarp {
@@ -643,7 +851,8 @@ impl Manifold {
     /// Faces of two coplanar triangles will be marked as quads, while faces with three or more coplanar triangles will be flat.
     ///
     /// # Parameters
-    /// * `vertex_normal_property_index`: The first property channel of the normals.
+    /// * `vertex_normal_first_property_index`: The index of the first channel containing the normal vector information.
+    ///   A normal vector consists of 3 channels as it is a vector in 3d space..
     ///   Any vertex where multiple normals exist and don't agree will result in a sharp edge.
     ///
     /// # Returns
@@ -652,28 +861,30 @@ impl Manifold {
     /// # Examples
     ///
     /// ```
-    /// use manifold3d::types::NonNegativeI32;
+    /// use manifold3d::types::{NonNegativeI32, NormalizedAngle};
     /// use manifold3d::Manifold;
     ///
     /// let manifold = Manifold::new_tetrahedron();
-    /// // TODO check if normals are always present
     ///
-    /// // In this example the first property of the normal vertex is in the 4th channel.
-    /// // 1-3th channel = position xyz
-    /// // 4-6th channel = normal xyz
-    /// let vertex_normal_property_index = NonNegativeI32::new(4).unwrap();
+    /// let first_normal_property_channel_index = NonNegativeI32::new(0).unwrap();
+    /// let minimum_sharpness_angle = NormalizedAngle::from_degrees(60.0);
     ///
-    /// let smoothed_manifold = manifold.smooth_by_normals(vertex_normal_property_index);
+    /// let manifold =
+    ///     manifold.calculate_normals(first_normal_property_channel_index, minimum_sharpness_angle);
+    /// // In this example the first property of the normal vertex is in the 1th channel at index 0.
+    /// // 1-3th channel (indices 0-2) = normal xyz
+    ///
+    /// let smoothed_manifold = manifold.smooth_by_normals(first_normal_property_channel_index);
     /// ```
     pub fn smooth_by_normals(
         &self,
-        vertex_normal_property_index: impl Into<NonNegativeI32>,
+        vertex_normal_first_property_index: impl Into<NonNegativeI32>,
     ) -> Manifold {
         let manifold_ptr = unsafe {
             manifold_smooth_by_normals(
                 manifold_alloc_manifold() as *mut c_void,
                 self.0,
-                vertex_normal_property_index.into().into(),
+                vertex_normal_first_property_index.into().into(),
             )
         };
         Manifold::from_ptr(manifold_ptr)
@@ -902,6 +1113,200 @@ impl Manifold {
         unsafe { manifold_num_tri(self.0) }
     }
 
+    /// Returns the number of properties per vertex in the manifold.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// assert_eq!(manifold.properties_per_vertex_count(), 0);
+    /// ```
+    pub fn properties_per_vertex_count(&self) -> usize {
+        unsafe { manifold_num_prop(self.0) }
+    }
+
+    /// Returns a [BoundingBox] representing the bounds of the manifold.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use manifold3d::{BoundingBox, Manifold};
+    ///
+    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let bounding_box = manifold.bounding_box();
+    /// ```
+    pub fn bounding_box(&self) -> BoundingBox {
+        let bounding_box_ptr =
+            unsafe { manifold_bounding_box(manifold_alloc_box() as *mut c_void, self.0) };
+        BoundingBox::from_ptr(bounding_box_ptr)
+    }
+
+    /// Returns the epsilon (precision) value of the manifold.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use manifold3d::types::{PositiveF64, PositiveI32};
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold = Manifold::new_sphere(PositiveF64::new(5.0).unwrap(), None::<PositiveI32>);
+    /// let epsilon = manifold.epsilon();
+    /// ```
+    pub fn epsilon(&self) -> f64 {
+        unsafe { manifold_epsilon(self.0) }
+    }
+
+    /// Returns the genus of the manifold.
+    ///
+    /// The genus is a topological property of the manifold, representing the number of "handles".
+    /// For example, a sphere has a genus of 0, a torus has a genus of 1, etc.
+    ///
+    /// This function is only meaningful for a single mesh, so it is best to call `decompose` first.
+    ///
+    /// # Returns
+    ///
+    /// The genus of the manifold, indicating the number of handles.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use manifold3d::types::{PositiveF64, PositiveI32};
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold = Manifold::new_sphere(PositiveF64::new(5.0).unwrap(), None::<PositiveI32>);
+    /// let genus = manifold.genus();
+    /// ```
+    pub fn genus(&self) -> i32 {
+        unsafe { manifold_genus(self.0) }
+    }
+
+    /// Returns the surface area of the manifold.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// assert_eq!(manifold.surface_area(), 6.0)
+    /// ```
+    pub fn surface_area(&self) -> f64 {
+        unsafe { manifold_surface_area(self.0) }
+    }
+
+    /// Returns the volume of the manifold.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    ///
+    /// assert_eq!(manifold.volume(), 1.0)
+    /// ```
+    pub fn volume(&self) -> f64 {
+        unsafe { manifold_volume(self.0) }
+    }
+
+    /// Returns the number of segments for a circular shape based on the given radius.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let segments = manifold.circular_segments(5.0);
+    /// ```
+    pub fn circular_segments(&self, radius: f64) -> i32 {
+        unsafe { manifold_get_circular_segments(radius) }
+    }
+
+    /// Returns the original ID if the underlying mesh is an original.
+    ///
+    /// If this manifold is a product of some operation it returns an empty option.
+    ///
+    /// # Returns
+    /// The original ID if the mesh is an original. Otherwise, an empty response.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold = Manifold::new_tetrahedron();
+    /// let original_id = manifold.original_id();
+    /// ```
+    pub fn original_id(&self) -> Option<i32> {
+        unsafe {
+            let id = manifold_original_id(self.0);
+            if id == -1 {
+                None
+            } else {
+                Some(id)
+            }
+        }
+    }
+
+    pub fn replace_vertex_properties(
+        &self,
+        manage_vertex_properties: Pin<&impl ManageVertexProperties>,
+    ) -> Manifold {
+        let mut ctx = pin!(manage_vertex_properties.new_ctx());
+
+        let old_properties_per_vertex_count = self.properties_per_vertex_count();
+        // The API mixes usize and i32 for the property count, but either should be fine,
+        // because we will never come close to i32::MAX properties per vertex
+        let new_properties_per_vertex_count =
+            manage_vertex_properties.new_vertex_properties_count(self);
+
+        let replace_vertex_properties_ctx = pin!(ReplaceVertexPropertiesCCtx {
+            manage_vertex_properties_ptr: &raw const *manage_vertex_properties as *mut c_void,
+            old_properties_per_vertex_count,
+            new_properties_per_vertex_count,
+            ctx_ptr: &raw mut *ctx as *mut c_void
+        });
+
+        let manifold_ptr = unsafe {
+            manifold_set_properties(
+                manifold_alloc_manifold() as *mut c_void,
+                self.0,
+                new_properties_per_vertex_count as i32,
+                Some(manage_vertex_properties.extern_c_replace_vertex_properties_fn()),
+                &raw const *replace_vertex_properties_ctx as *mut c_void,
+            )
+        };
+
+        let _ = replace_vertex_properties_ctx;
+        let _ = ctx;
+        let _ = manage_vertex_properties;
+        Manifold::from_ptr(manifold_ptr)
+    }
+
+    pub fn calculate_curvature() -> Manifold {
+        todo!()
+    }
+
+    pub fn minimum_gap(&self, _other: &Manifold) -> f64 {
+        todo!()
+    }
+
+    pub fn calculate_normals(
+        &self,
+        vertex_normal_first_property_index: impl Into<NonNegativeI32>,
+        minimum_sharpness_angle: NormalizedAngle,
+    ) -> Manifold {
+        let manifold_ptr = unsafe {
+            manifold_calculate_normals(
+                manifold_alloc_manifold() as *mut c_void,
+                self.0,
+                vertex_normal_first_property_index.into().into(),
+                // TODO https://github.com/elalish/manifold/issues/1083
+                minimum_sharpness_angle.get() as i32,
+            )
+        };
+        Manifold::from_ptr(manifold_ptr)
+    }
+
     /// Returns a [MeshGL] representation of the manifold.
     ///
     /// # Examples
@@ -916,22 +1321,6 @@ impl Manifold {
         let mesh_gl_ptr =
             unsafe { manifold_get_meshgl(manifold_alloc_meshgl() as *mut c_void, self.0) };
         MeshGL::from_ptr(mesh_gl_ptr)
-    }
-
-    /// Returns the [BoundingBox] representing the bounds of the manifold.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use manifold3d::{BoundingBox, Manifold};
-    ///
-    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
-    /// let bounding_box = manifold.bounding_box();
-    /// ```
-    pub fn bounding_box(&self) -> BoundingBox {
-        let bounding_box_ptr =
-            unsafe { manifold_bounding_box(manifold_alloc_box() as *mut c_void, self.0) };
-        BoundingBox::from_ptr(bounding_box_ptr)
     }
 }
 
@@ -1200,17 +1589,55 @@ impl OffsetPlane {
     }
 }
 
+/// Represents a rotation in 3D space.
+pub struct Rotation {
+    /// The rotation around the x-axis.
+    pub x: NormalizedAngle,
+    /// The rotation around the y-axis.
+    pub y: NormalizedAngle,
+    /// The rotation around the z-axis.
+    pub z: NormalizedAngle,
+}
+
+impl Rotation {
+    /// Creates a new [Rotation] with the given x, y, and z rotations.
+    ///
+    /// # Arguments
+    /// * `x`: The rotation around the x-axis.
+    /// * `y`: The rotation around the y-axis.
+    /// * `z`: The rotation around the z-axis.
+    ///
+    /// # Returns
+    /// A new rotation object.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::manifold::Rotation;
+    /// use manifold3d::types::NormalizedAngle;
+    ///
+    /// let rotation = Rotation::new(
+    ///     NormalizedAngle::from_degrees(0.0),
+    ///     NormalizedAngle::from_degrees(45.0),
+    ///     NormalizedAngle::from_degrees(90.0),
+    /// );
+    /// ```
+    #[must_use]
+    pub fn new(x: NormalizedAngle, y: NormalizedAngle, z: NormalizedAngle) -> Self {
+        Self { x, y, z }
+    }
+}
+
 mod warp {
     use crate::types::Point3;
 
     /// A trait that combines the functionality of [WarpVertex] and [ExternCWarpFn].
     ///
-    /// This trait is automatically implemented by the [manifold3d::manifold_warp](crate::macros::manifold_warp)
+    /// This trait is automatically implemented by the [manifold3d::manifold::warp](crate::manifold::warp)
     /// macro, which ensures that both [WarpVertex] and [ExternCWarpFn] are implemented
     /// for the annotated struct.
     ///
     /// # Context
-    /// [Warp] is used in conjunction with the [Manifold#warp](struct.Manifold.html#method.warp)
+    /// [Warp] is used in conjunction with the [Manifold::warp](crate::Manifold::warp)
     /// method to apply a transformation or deformation to a 3D manifold. The user needs to
     /// implement the [WarpVertex] trait to define the specific transformation logic.
     pub trait Warp: WarpVertex + ExternCWarpFn {}
@@ -1219,21 +1646,25 @@ mod warp {
     ///
     /// Implementing this trait allows you to define how individual vertices in a 3D
     /// space are transformed. This is the core functionality that you need to implement
-    /// when using the [manifold3d::manifold_warp](crate::macros::manifold_warp) macro.
+    /// when using the [manifold3d::manifold::warp](crate::manifold::warp) macro.
     ///
     /// # Example
     /// ```
-    /// use manifold3d::macros::manifold_warp;
+    /// use manifold3d::macros::manifold;
     /// use manifold3d::manifold::WarpVertex;
     /// use manifold3d::types::Point3;
     ///
-    /// #[manifold_warp]
+    /// #[manifold::warp]
     /// struct MyWarp;
     ///
     /// impl WarpVertex for MyWarp {
-    ///     fn warp_vertex(&self, vertex: Point3) -> Point3 {
+    ///     fn warp_vertex(&self, vertex_position: Point3) -> Point3 {
     ///         // Example: Translate the vertex by (1.0, 2.0, 3.0)
-    ///         Point3::new(vertex.x + 1.0, vertex.y + 2.0, vertex.z + 3.0)
+    ///         Point3::new(
+    ///             vertex_position.x + 1.0,
+    ///             vertex_position.y + 2.0,
+    ///             vertex_position.z + 3.0,
+    ///         )
     ///     }
     /// }
     /// ```
@@ -1241,19 +1672,19 @@ mod warp {
         /// Transforms a single vertex.
         ///
         /// # Arguments
-        /// - `vertex`: A point in 3D space to be transformed.
+        /// - `position`: The position of a vertex.
         ///
         /// # Returns
         /// A new `Point3` representing the transformed vertex.
-        fn warp_vertex(&self, vertex: Point3) -> Point3;
+        fn warp_vertex(&self, vertex_position: Point3) -> Point3;
     }
 
     /// A trait for providing an `extern "C"` function pointer for vertex transformations.
     ///
     /// This trait is automatically implemented by the
-    /// [manifold3d::manifold_warp](crate::macros::manifold_warp) macro. It provides
+    /// [manifold3d::manifold::warp](crate::manifold::warp) macro. It provides
     /// a function pointer that can be used in contexts requiring an `extern "C"` interface,
-    /// such as the [Manifold#warp](crate::manifold::Manifold#method.warp) function.
+    /// such as the [Manifold::warp](crate::Manifold::warp) function.
     ///
     /// Users typically do not need to implement this trait manually; instead, it is
     /// derived by the macro.
@@ -1279,5 +1710,184 @@ mod warp {
             arg3: f64,
             arg4: *mut ::std::os::raw::c_void,
         ) -> manifold3d_sys::ManifoldVec3;
+    }
+}
+
+mod properties {
+    use crate::types::Point3;
+    use crate::Manifold;
+
+    /// This trait combines the functionality of [`ReplaceVertexProperties`] and [`ExternCReplaceVertexPropertiesFn`]
+    /// and ensures that both of them are implemented together, as they are intended to be used in tandem.
+    /// It encapsulates the ability to replace vertex properties in a manifold and offers a safe API
+    /// for invoking the [`manifold_set_properties`](crate::sys::manifold_set_properties) C function.
+    ///
+    /// Users should utilize the [`manifold3d::manifold::manage_vertex_properties`](crate::manifold::manage_vertex_properties)
+    /// macro to generate implementations for the [`ManageVertexProperties`] and [`ExternCReplaceVertexPropertiesFn`] traits
+    /// and should only directly implement the [`ReplaceVertexProperties`] trait.
+    ///
+    /// # Examples
+    ///
+    /// See [`ReplaceVertexProperties::replace_vertex_properties`] for a full example implementation.
+    pub trait ManageVertexProperties:
+        ReplaceVertexProperties + ExternCReplaceVertexPropertiesFn
+    {
+    }
+
+    /// This trait defines the methods required to replace vertex properties of a manifold.
+    pub trait ReplaceVertexProperties {
+        /// The type of the context used during property replacement, which is user-defined.
+        /// This context is passed to the [`ReplaceVertexProperties::replace_vertex_properties`] function.
+        type CTX: Sized + Unpin;
+
+        /// Initializes a new user-defined context for managing vertex property replacement.
+        ///
+        /// This context is instantiated for each manifold processed and is utilized across all vertex replacements
+        /// within that manifold, allowing shared state and continuity throughout the process.
+        ///
+        /// # Returns
+        ///
+        /// A new instance of the user-defined context type (`Self::CTX`).
+        fn new_ctx(&self) -> Self::CTX;
+
+        /// Determines the number of properties each vertex will have after the replacement.
+        ///
+        /// * `target`: Reference to the [`Manifold`] whose vertex properties will be used as old properties.
+        ///   Note: The replacement operation produces a new manifold without altering the input manifold.
+        ///
+        /// # Returns
+        ///
+        /// The new number of properties allocated per vertex.
+        fn new_vertex_properties_count(&self, target: &Manifold) -> usize;
+
+        /// Replaces the properties of a vertex based on its current properties and position.
+        ///
+        /// Note: The replacement operation produces a new manifold without altering the input manifold.
+        ///
+        /// * `ctx`: A mutable reference to the context object, used to maintain a shared state during property replacement.
+        /// * `vertex_position`: The position of the vertex being processed.
+        /// * `old_properties`: A slice containing the old properties of the vertex.
+        /// * `new_properties`: A mutable slice used to store the new properties of the vertex.
+        ///   The length of this slice corresponds to the result of [`ReplaceVertexProperties::new_vertex_properties_count`].
+        ///
+        /// # Safety Considerations
+        ///
+        /// Ensure `new_properties` is properly sized to accommodate the new data being written to prevent potential overflows.
+        ///
+        /// # Examples
+        /// ```
+        /// use manifold3d::manifold;
+        /// use manifold3d::manifold::ReplaceVertexProperties;
+        /// use manifold3d::types::Point3;
+        /// use manifold3d::Manifold;
+        /// use std::pin::Pin;
+        ///
+        /// pub struct MyPropertyReplacerCtx {
+        ///     vertex_count: usize,
+        /// }
+        ///
+        /// #[manifold::manage_vertex_properties]
+        /// pub struct MyPropertyReplacer {}
+        ///
+        /// impl ReplaceVertexProperties for MyPropertyReplacer {
+        ///     type CTX = MyPropertyReplacerCtx;
+        ///
+        ///     fn new_ctx(&self) -> Self::CTX {
+        ///         MyPropertyReplacerCtx { vertex_count: 0 }
+        ///     }
+        ///
+        ///     fn new_vertex_properties_count(&self, target: &Manifold) -> usize {
+        ///         // We add 3 more properties (channels) per vertex
+        ///         target.properties_per_vertex_count() + 3
+        ///     }
+        ///
+        ///     fn replace_vertex_properties(
+        ///         &self,
+        ///         ctx: &mut Self::CTX,
+        ///         vertex_position: Point3,
+        ///         old_properties: &[f64],
+        ///         new_properties: &mut [f64],
+        ///     ) -> () {
+        ///         ctx.vertex_count += 1;
+        ///         // Copy existing old properties to new properties
+        ///         new_properties[..old_properties.len()].copy_from_slice(&old_properties);
+        ///
+        ///         // Fill new channels with some data
+        ///         let new_data_index = old_properties.len();
+        ///         new_properties[new_data_index] = (ctx.vertex_count + 1) as f64;
+        ///         new_properties[new_data_index + 1] = (ctx.vertex_count + 2) as f64;
+        ///         new_properties[new_data_index + 2] = (ctx.vertex_count + 3) as f64;
+        ///     }
+        /// }
+        ///
+        /// let replacer = MyPropertyReplacer {};
+        ///
+        /// let manifold = Manifold::new_tetrahedron();
+        /// assert_eq!(manifold.properties_per_vertex_count(), 0);
+        ///
+        /// let manifold = manifold.replace_vertex_properties(Pin::new(&replacer));
+        /// assert_eq!(manifold.properties_per_vertex_count(), 3);
+        /// ```
+        fn replace_vertex_properties(
+            &self,
+            ctx: &mut Self::CTX,
+            vertex_position: Point3,
+            old_properties: &[f64],
+            new_properties: &mut [f64],
+        );
+    }
+
+    /// This trait defines a method to supply an external C function utilized by the
+    /// [`manifold_set_properties`](crate::sys::manifold_set_properties) function.
+    ///
+    /// This external function is invoked multiple times, serving as a callback mechanism
+    /// to modify the properties of vertices within a manifold.
+    ///
+    /// The actual modification is carried out safely through a user-provided implementation of the
+    /// [`ReplaceVertexProperties::replace_vertex_properties`] function.
+    ///
+    /// # Safety
+    ///
+    /// Users must ensure proper memory management when implementing this trait manually.
+    ///
+    /// To facilitate safe memory handling and minimize errors, it is recommended to use the
+    /// [`manifold3d::manifold::manage_vertex_properties`](crate::manifold::manage_vertex_properties) macro.
+    /// This macro automatically generates an implementation of the trait, ensuring correct and efficient
+    /// memory management.
+    pub trait ExternCReplaceVertexPropertiesFn {
+        /// This method returns an external C function, which is then passed to the
+        /// [`manifold_set_properties`](crate::sys::manifold_set_properties) function.
+        ///
+        /// The external function serves as a callback to modify vertex properties.
+        /// Within its implementation, it should invoke [`ReplaceVertexProperties::replace_vertex_properties`],
+        /// a user-provided implementation which carries out the actual modification which also offers
+        /// a safe API for handling the replacement.
+        fn extern_c_replace_vertex_properties_fn(
+            &self,
+        ) -> unsafe extern "C" fn(
+            new_prop: *mut f64,
+            position: manifold3d_sys::ManifoldVec3,
+            old_prop: *const f64,
+            ctx: *mut ::std::os::raw::c_void,
+        );
+    }
+
+    /// C context for replacing vertex properties. This is passed to the
+    /// [`manifold_set_properties`](crate::sys::manifold_set_properties) C function, deconstructed
+    /// and used to call [`ReplaceVertexProperties::replace_vertex_properties`].
+    ///
+    /// This struct is only relevant to users who wish to manually implement the [`ExternCReplaceVertexPropertiesFn`] trait.
+    /// It is recommended to use the [`manifold3d::manifold::manage_vertex_properties`](crate::manifold::manage_vertex_properties)
+    /// macro, which automatically implements the trait, ensuring safe and efficient memory management.
+    ///
+    /// * `manage_vertex_properties_ptr`: A raw pointer to the [`ManageVertexProperties`] object.
+    /// * `old_properties_per_vertex_count`: The number of old properties per vertex.
+    /// * `new_properties_per_vertex_count`: The number of new properties per vertex.
+    /// * `ctx_ptr`: A raw pointer to the mutable context object.
+    pub struct ReplaceVertexPropertiesCCtx {
+        pub manage_vertex_properties_ptr: *mut ::std::os::raw::c_void,
+        pub old_properties_per_vertex_count: usize,
+        pub new_properties_per_vertex_count: usize,
+        pub ctx_ptr: *mut ::std::os::raw::c_void,
     }
 }

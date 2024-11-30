@@ -1,6 +1,7 @@
-use manifold3d::manifold::BooleanOperation;
+use manifold3d::macros::manifold;
+use manifold3d::manifold::{BooleanOperation, ReplaceVertexProperties};
+use manifold3d::types::Point3;
 use manifold3d::{types, Manifold};
-use manifold3d_macros::manifold_warp;
 use std::pin::Pin;
 
 #[test]
@@ -55,14 +56,13 @@ fn test_batch_boolean_subtraction() {
 
 #[test]
 fn test_linear_warping() {
-    #[manifold_warp]
+    #[manifold::warp]
     pub struct TranslationWarp {
         translation: types::Vec3,
     }
 
     impl manifold3d::manifold::WarpVertex for TranslationWarp {
         fn warp_vertex(&self, vertex: types::Point3) -> types::Point3 {
-            
             types::Point3::new(
                 vertex.x + self.translation.x,
                 vertex.y + self.translation.y,
@@ -89,4 +89,50 @@ fn test_linear_warping() {
         result_bounding_box.max_point(),
         expected_bounding_box.max_point() + 1.0
     );
+}
+
+#[test]
+fn test_replace_vertex_properties() {
+    #[manifold::manage_vertex_properties]
+    pub struct MyPropertyReplacer {}
+
+    pub struct MyPropertyReplacerCtx {
+        vertex_count: usize,
+    }
+
+    impl ReplaceVertexProperties for MyPropertyReplacer {
+        type CTX = MyPropertyReplacerCtx;
+
+        fn new_ctx(&self) -> Self::CTX {
+            MyPropertyReplacerCtx { vertex_count: 0 }
+        }
+
+        fn new_vertex_properties_count(&self, target: &Manifold) -> usize {
+            // We add 3 more channels per vertex
+            target.properties_per_vertex_count() + 3
+        }
+
+        fn replace_vertex_properties(
+            &self,
+            ctx: &mut Self::CTX,
+            _vertex_position: Point3,
+            old_properties: &[f64],
+            new_properties: &mut [f64],
+        ) {
+            ctx.vertex_count += 1;
+            println!("{}", ctx.vertex_count);
+            new_properties[..old_properties.len()].copy_from_slice(old_properties);
+
+            let new_data_index = old_properties.len();
+            new_properties[new_data_index] = (ctx.vertex_count + 1) as f64;
+            new_properties[new_data_index + 1] = (ctx.vertex_count + 2) as f64;
+            new_properties[new_data_index + 2] = (ctx.vertex_count + 3) as f64;
+        }
+    }
+
+    let manifold = manifold3d::Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    let replacer = MyPropertyReplacer {};
+
+    let new_manifold = manifold.replace_vertex_properties(Pin::new(&replacer));
+    println!("{}", new_manifold.properties_per_vertex_count());
 }
