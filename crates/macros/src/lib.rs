@@ -23,7 +23,7 @@ pub fn manifold_warp(_attr: TokenStream, input: TokenStream) -> TokenStream {
             struct_name.to_ascii_lowercase(),
             unique_id
         )
-            .as_str(),
+        .as_str(),
         proc_macro2::Span::call_site(),
     );
 
@@ -82,7 +82,7 @@ pub fn manifold_manage_vertex_properties(_attr: TokenStream, input: TokenStream)
             struct_name.to_ascii_lowercase(),
             unique_id
         )
-            .as_str(),
+        .as_str(),
         proc_macro2::Span::call_site(),
     );
 
