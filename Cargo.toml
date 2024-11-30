@@ -16,7 +16,7 @@ include = [
 crate-type = ["cdylib", "rlib", "staticlib"]
 
 [dependencies]
-manifold3d-macros = { path = "crates/macros", version = "0.0.2" }
+manifold3d-macros = { path = "crates/macros", version = "0.0.3" }
 manifold3d-sys = { version = "0.0.4" }
 thiserror = "2.0.3"
 num-traits = "0.2.19"
