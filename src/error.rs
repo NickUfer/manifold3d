@@ -51,6 +51,10 @@ impl From<ManifoldError> for Error {
             manifold3d_sys::ManifoldError_MANIFOLD_INVALID_CONSTRUCTION => {
                 Error::InvalidConstruction
             }
+            // These error codes will, with high probability, never reach i32::MAX.
+            #[cfg(windows)]
+            value => Error::Unknown(value as u32),
+            #[cfg(not(windows))]
             value => Error::Unknown(value),
         }
     }
