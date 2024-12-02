@@ -30,18 +30,6 @@ impl<T: num_traits::Num + PartialOrd + Copy> PositiveNum<T> {
     }
 }
 
-macro_rules! impl_positive_num_from {
-    ($ttype:ident, $underlying_primitive:ident, ($($from_type:ty),+)) => {
-        $(
-            impl From<$from_type> for $ttype {
-                fn from(value: $from_type) -> Self {
-                    PositiveNum($underlying_primitive::from(value))
-                }
-            }
-        )+
-    };
-}
-
 macro_rules! impl_positive_num_try_from {
     ($ttype:ident, $underlying_primitive:ident, ($($from_type:ty),+)) => {
         $(
@@ -93,14 +81,12 @@ macro_rules! impl_partial_ord {
 
 pub type PositiveI32 = PositiveNum<i32>;
 impl_into_primitive!(PositiveI32, i32);
-impl_positive_num_from!(PositiveI32, i32, (u8, u16));
-impl_positive_num_try_from!(PositiveI32, i32, (i8, i16, i32));
-impl_partial_eq!(PositiveI32, i32, (i8, i16, i32));
-impl_partial_ord!(PositiveI32, i32, (i8, i16, i32));
+impl_positive_num_try_from!(PositiveI32, i32, (u8, u16, i8, i16, i32));
+impl_partial_eq!(PositiveI32, i32, (u8, u16, i8, i16, i32));
+impl_partial_ord!(PositiveI32, i32, (u8, u16, i8, i16, i32));
 
 pub type PositiveF64 = PositiveNum<f64>;
 impl_into_primitive!(PositiveF64, f64);
-impl_positive_num_from!(PositiveF64, f64, (u8, u16, u32));
-impl_positive_num_try_from!(PositiveF64, f64, (i8, i16, i32, f32, f64));
-impl_partial_eq!(PositiveF64, f64, (i8, i16, i32, f32, f64));
-impl_partial_ord!(PositiveF64, f64, (i8, i16, i32, f32, f64));
+impl_positive_num_try_from!(PositiveF64, f64, (u8, u16, u32, i8, i16, i32, f32, f64));
+impl_partial_eq!(PositiveF64, f64, (u8, u16, u32, i8, i16, i32, f32, f64));
+impl_partial_ord!(PositiveF64, f64, (u8, u16, u32, i8, i16, i32, f32, f64));

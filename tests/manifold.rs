@@ -1,12 +1,17 @@
 use manifold3d::macros::manifold;
 use manifold3d::manifold::{BooleanOperation, ReplaceVertexProperties};
-use manifold3d::types::Point3;
+use manifold3d::types::{Point3, PositiveF64};
 use manifold3d::{types, Manifold};
 use std::pin::Pin;
 
 #[test]
 fn test_translation() {
-    let original = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    let original = Manifold::new_cuboid(
+        PositiveF64::new(1.0).unwrap(),
+        PositiveF64::new(1.0).unwrap(),
+        PositiveF64::new(1.0).unwrap(),
+        true,
+    );
     let translated = original.translate(types::Vec3::new(1.0, -1.0, 3.0));
 
     assert_eq!(
@@ -21,11 +26,21 @@ fn test_translation() {
 
 #[test]
 fn test_boolean_subtraction() {
-    let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    let manifold = Manifold::new_cuboid(
+        PositiveF64::new(1.0).unwrap(),
+        PositiveF64::new(1.0).unwrap(),
+        PositiveF64::new(1.0).unwrap(),
+        true,
+    );
     let expected_bounding_box = manifold.bounding_box();
 
-    let other =
-        Manifold::new_cuboid(1u8, 1u8, 1u8, true).translate(types::Vec3::new(0.0, 0.5, 0.0));
+    let other = Manifold::new_cuboid(
+        PositiveF64::new(1.0).unwrap(),
+        PositiveF64::new(1.0).unwrap(),
+        PositiveF64::new(1.0).unwrap(),
+        true,
+    )
+    .translate(types::Vec3::new(0.0, 0.5, 0.0));
     let result = manifold.boolean(&other, BooleanOperation::Subtract);
     let result_bounding_box = result.bounding_box();
 
@@ -40,14 +55,43 @@ fn test_boolean_subtraction() {
 
 #[test]
 fn test_batch_boolean_subtraction() {
-    let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    let manifold = Manifold::new_cuboid(
+        PositiveF64::new(1.0).unwrap(),
+        PositiveF64::new(1.0).unwrap(),
+        PositiveF64::new(1.0).unwrap(),
+        true,
+    );
 
     // Removes all edges to form a cross
     let others = vec![
-        Manifold::new_cuboid(1u8, 1u8, 1u8, true).translate(types::Vec3::new(0.75, 0.75, 0.0)),
-        Manifold::new_cuboid(1u8, 1u8, 1u8, true).translate(types::Vec3::new(-0.75, -0.75, 0.0)),
-        Manifold::new_cuboid(1u8, 1u8, 1u8, true).translate(types::Vec3::new(0.75, -0.75, 0.0)),
-        Manifold::new_cuboid(1u8, 1u8, 1u8, true).translate(types::Vec3::new(-0.75, 0.75, 0.0)),
+        Manifold::new_cuboid(
+            PositiveF64::new(1.0).unwrap(),
+            PositiveF64::new(1.0).unwrap(),
+            PositiveF64::new(1.0).unwrap(),
+            true,
+        )
+        .translate(types::Vec3::new(0.75, 0.75, 0.0)),
+        Manifold::new_cuboid(
+            PositiveF64::new(1.0).unwrap(),
+            PositiveF64::new(1.0).unwrap(),
+            PositiveF64::new(1.0).unwrap(),
+            true,
+        )
+        .translate(types::Vec3::new(-0.75, -0.75, 0.0)),
+        Manifold::new_cuboid(
+            PositiveF64::new(1.0).unwrap(),
+            PositiveF64::new(1.0).unwrap(),
+            PositiveF64::new(1.0).unwrap(),
+            true,
+        )
+        .translate(types::Vec3::new(0.75, -0.75, 0.0)),
+        Manifold::new_cuboid(
+            PositiveF64::new(1.0).unwrap(),
+            PositiveF64::new(1.0).unwrap(),
+            PositiveF64::new(1.0).unwrap(),
+            true,
+        )
+        .translate(types::Vec3::new(-0.75, 0.75, 0.0)),
     ];
     let result = manifold.batch_boolean(&others, BooleanOperation::Subtract);
 
@@ -71,7 +115,12 @@ fn test_linear_warping() {
         }
     }
 
-    let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    let manifold = Manifold::new_cuboid(
+        PositiveF64::new(1.0).unwrap(),
+        PositiveF64::new(1.0).unwrap(),
+        PositiveF64::new(1.0).unwrap(),
+        true,
+    );
     let expected_bounding_box = manifold.bounding_box();
 
     let translation_warp = TranslationWarp {
@@ -130,7 +179,12 @@ fn test_replace_vertex_properties() {
         }
     }
 
-    let manifold = manifold3d::Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    let manifold = manifold3d::Manifold::new_cuboid(
+        PositiveF64::new(1.0).unwrap(),
+        PositiveF64::new(1.0).unwrap(),
+        PositiveF64::new(1.0).unwrap(),
+        true,
+    );
     let replacer = MyPropertyReplacer {};
 
     let new_manifold = manifold.replace_vertex_properties(Pin::new(&replacer));

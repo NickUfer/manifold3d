@@ -4,16 +4,17 @@ use crate::mesh_gl::MeshGL;
 use manifold3d_sys::{
     manifold_alloc_box, manifold_alloc_manifold, manifold_alloc_manifold_vec,
     manifold_alloc_meshgl, manifold_batch_boolean, manifold_boolean, manifold_bounding_box,
-    manifold_calculate_normals, manifold_copy, manifold_cube, manifold_cylinder,
-    manifold_delete_manifold, manifold_difference, manifold_empty, manifold_epsilon,
-    manifold_genus, manifold_get_circular_segments, manifold_get_meshgl, manifold_intersection,
-    manifold_is_empty, manifold_manifold_vec, manifold_manifold_vec_set, manifold_mirror,
-    manifold_num_edge, manifold_num_prop, manifold_num_tri, manifold_num_vert, manifold_of_meshgl,
-    manifold_original_id, manifold_refine, manifold_refine_to_length, manifold_refine_to_tolerance,
-    manifold_scale, manifold_set_properties, manifold_smooth_by_normals, manifold_smooth_out,
-    manifold_sphere, manifold_split, manifold_split_by_plane, manifold_surface_area,
-    manifold_tetrahedron, manifold_translate, manifold_trim_by_plane, manifold_union,
-    manifold_volume, manifold_warp, ManifoldManifold, ManifoldOpType,
+    manifold_calculate_curvature, manifold_calculate_normals, manifold_copy, manifold_cube,
+    manifold_cylinder, manifold_delete_manifold, manifold_difference, manifold_empty,
+    manifold_epsilon, manifold_genus, manifold_get_circular_segments, manifold_get_meshgl,
+    manifold_intersection, manifold_is_empty, manifold_manifold_vec, manifold_manifold_vec_set,
+    manifold_min_gap, manifold_mirror, manifold_num_edge, manifold_num_prop, manifold_num_tri,
+    manifold_num_vert, manifold_of_meshgl, manifold_original_id, manifold_refine,
+    manifold_refine_to_length, manifold_refine_to_tolerance, manifold_scale,
+    manifold_set_properties, manifold_smooth_by_normals, manifold_smooth_out, manifold_sphere,
+    manifold_split, manifold_split_by_plane, manifold_surface_area, manifold_tetrahedron,
+    manifold_translate, manifold_trim_by_plane, manifold_union, manifold_volume, manifold_warp,
+    ManifoldManifold, ManifoldOpType,
 };
 use std::os::raw::{c_int, c_void};
 use std::pin::{pin, Pin};
@@ -50,7 +51,7 @@ impl Manifold {
     /// at the origin, with its edges extending equally in all directions.
     ///
     /// # Returns
-    /// - A guaranteed non-empty `Manifold` representing a cuboid with the specified dimensions.
+    /// - A guaranteed non-empty manifold representing a cuboid with the specified dimensions.
     ///
     /// # Examples
     /// ```
@@ -58,7 +59,12 @@ impl Manifold {
     /// use manifold3d::Manifold;
     ///
     /// // A cuboid of size 1x2x3, touching the origin in the first octant.
-    /// let cuboid = Manifold::new_cuboid(1u8, 2u16, 3u32, false);
+    /// let cuboid = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(2.0).unwrap(),
+    ///     PositiveF64::new(3.0).unwrap(),
+    ///     false,
+    /// );
     ///
     /// // A cube of size 1.5x1.5x1.5 with its center at (0, 0, 0).
     /// let cube_edge_length: PositiveF64 = 1.5.try_into().unwrap();
@@ -219,7 +225,7 @@ impl Manifold {
     /// let height = PositiveF64::new(10.0).unwrap();
     /// let bottom_radius = PositiveF64::new(5.0).unwrap();
     /// let top_radius = PositiveF64::new(3.0).unwrap();
-    /// let circular_segments = 32u16;
+    /// let circular_segments = PositiveI32::new(32).unwrap();
     ///
     /// let cylinder = Manifold::new_cylinder(
     ///     height,
@@ -259,7 +265,8 @@ impl Manifold {
     /// * `bottom_radius`: The radius of the bottom circle of the cylinder.
     /// * `top_radius`: The radius of the top circle of the cylinder.
     /// * `circular_segments`: The number of circular segments to use when constructing the cylinder.
-    /// * `origin_at_center`: If true, the origin of the cylinder will be at its center. Otherwise, the origin will be at the bottom center.
+    /// * `origin_at_center`: If true, the origin of the cylinder will be at its center.
+    ///   Otherwise, the origin will be at the bottom center.
     ///
     /// # Returns
     /// A new manifold representing the cylinder.
@@ -293,6 +300,31 @@ impl Manifold {
         check_error(Manifold::from_ptr(manifold_ptr)).unwrap()
     }
 
+    /// Creates a new sphere manifold with the specified radius and an optional number of circular segments.
+    ///
+    /// # Arguments
+    /// * `radius`: Specifies the radius of the sphere.
+    /// * `circular_segments`: Specifies the optional number of circular segments to approximate the sphere.
+    ///   If `None` is provided, the global quality defaults are used.
+    ///
+    /// # Returns
+    ///
+    /// Returns a new manifold object representing the sphere with the specified parameters.
+    ///
+    /// # Examples
+    /// ```
+    /// use manifold3d::types::{PositiveF64, PositiveI32};
+    /// use manifold3d::Manifold;
+    ///
+    /// // Create a sphere with a radius of 1.0 and global default circular segment count.
+    /// let default_sphere = Manifold::new_sphere(PositiveF64::new(1.0).unwrap(), None::<PositiveI32>);
+    ///
+    /// // Create a sphere with a radius of 1.0 and 30 circular segments.
+    /// let segmented_sphere = Manifold::new_sphere(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     Some(PositiveI32::new(30).unwrap()),
+    /// );
+    /// ```
     pub fn new_sphere(
         radius: impl Into<PositiveF64>,
         circular_segments: Option<impl Into<PositiveI32>>,
@@ -309,7 +341,7 @@ impl Manifold {
     /// * `circular_segments`: The number of circular segments used to approximate the sphere.
     ///
     /// # Returns
-    /// A [Result] containing the new manifold if successful, and a [crate::Error] if not.
+    /// A [`Result`] containing the new manifold if successful, and a [`crate::Error`] if not.
     ///
     /// # Safety
     /// This function is unsafe because it does not check if the input is valid.
@@ -334,10 +366,34 @@ impl Manifold {
         check_error(Manifold::from_ptr(manifold_ptr))
     }
 
+    /// Creates a new, empty manifold instance.
+    ///
+    /// # Returns
+    ///
+    /// An empty manifold object, initialized to represent an empty geometry.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use manifold3d::Manifold;
+    ///
+    /// let empty_manifold = Manifold::new_empty();
+    /// ```
     pub fn new_empty() -> Manifold {
         Manifold::from_ptr(unsafe { manifold_empty(manifold_alloc_manifold() as *mut c_void) })
     }
 
+    /// Constructs a manifold object from a [`MeshGL`] representation.
+    ///
+    /// # Arguments
+    ///
+    /// * `mesh_gl`: A reference to a [`MeshGL`] object, which represents the mesh geometry.
+    ///
+    /// # Returns
+    ///
+    /// A new manifold object representing the 3D manifold created from the
+    /// provided [MeshGL]. In case of failure, an [Error] is returned encapsulating the reason for
+    /// failure.
     pub fn from_mesh_gl(mesh_gl: &MeshGL) -> Result<Manifold, Error> {
         Manifold::try_from(mesh_gl)
     }
@@ -373,11 +429,22 @@ impl Manifold {
     /// # Examples
     /// ```
     /// use manifold3d::manifold::BooleanOperation;
-    /// use manifold3d::types::Vec3;
+    /// use manifold3d::types::{PositiveF64, Vec3};
     /// use manifold3d::Manifold;
     ///
-    /// let a = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
-    /// let b = Manifold::new_cuboid(1u8, 1u8, 1u8, true).translate(Vec3::new(0.5, 0.5, 0.5));
+    /// let a = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
+    /// let b = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// )
+    /// .translate(Vec3::new(0.5, 0.5, 0.5));
     /// let result = a.boolean(&b, BooleanOperation::Add);
     /// ```
     pub fn boolean(&self, other: &Manifold, operation: BooleanOperation) -> Manifold {
@@ -410,7 +477,12 @@ impl Manifold {
     /// use manifold3d::types::{PositiveF64, PositiveI32};
     /// use manifold3d::Manifold;
     ///
-    /// let a = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let a = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
     /// let b = Manifold::new_sphere(PositiveF64::new(0.5).unwrap(), None::<PositiveI32>);
     /// let c = Manifold::new_tetrahedron();
     ///
@@ -460,17 +532,28 @@ impl Manifold {
     /// # Examples
     /// ```
     /// use manifold3d::manifold::Rotation;
-    /// use manifold3d::types::{NormalizedAngle, Vec3};
+    /// use manifold3d::types::{NormalizedAngle, PositiveF64, Vec3};
     /// use manifold3d::Manifold;
     ///
-    /// let a = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let a = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
     ///
     /// let b_rotation = Rotation::new(
     ///     NormalizedAngle::from_degrees(0.0),
     ///     NormalizedAngle::from_degrees(45.0),
     ///     NormalizedAngle::from_degrees(45.0),
     /// );
-    /// let b = Manifold::new_cuboid(1u8, 1u8, 1u8, true).rotate(b_rotation);
+    /// let b = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// )
+    /// .rotate(b_rotation);
     /// let c = a.union(&b);
     /// ```
     pub fn union(&self, other: &Manifold) -> Manifold {
@@ -496,11 +579,22 @@ impl Manifold {
     /// # Examples
     ///
     /// ```
-    /// use manifold3d::types::Vec3;
+    /// use manifold3d::types::{PositiveF64, Vec3};
     /// use manifold3d::Manifold;
     ///
-    /// let a = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
-    /// let b = Manifold::new_cuboid(1u8, 1u8, 1u8, true).translate(Vec3::new(0.0, 0.5, 0.5));
+    /// let a = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
+    /// let b = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// )
+    /// .translate(Vec3::new(0.0, 0.5, 0.5));
     ///
     /// let result_manifold = a.difference(&b);
     /// ```
@@ -528,11 +622,22 @@ impl Manifold {
     /// # Examples
     ///
     /// ```
-    /// use manifold3d::types::Vec3;
+    /// use manifold3d::types::{PositiveF64, Vec3};
     /// use manifold3d::Manifold;
     ///
-    /// let a = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
-    /// let b = Manifold::new_cuboid(1u8, 1u8, 1u8, true).translate(Vec3::new(0.0, 0.5, 0.5));
+    /// let a = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
+    /// let b = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// )
+    /// .translate(Vec3::new(0.0, 0.5, 0.5));
     ///
     /// let result_manifold = a.intersection(&b);
     /// ```
@@ -559,7 +664,12 @@ impl Manifold {
     /// use manifold3d::types::{PositiveF64, PositiveI32};
     /// use manifold3d::Manifold;
     ///
-    /// let a = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let a = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
     /// let b = Manifold::new_sphere(PositiveF64::new(1.0).unwrap(), None::<PositiveI32>);
     ///
     /// let (intersection, difference) = a.split(&b);
@@ -637,10 +747,15 @@ impl Manifold {
     /// # Examples
     /// ```
     /// use manifold3d::manifold::{OffsetPlane, Plane};
-    /// use manifold3d::types::Vec3;
+    /// use manifold3d::types::{PositiveF64, Vec3};
     /// use manifold3d::Manifold;
     ///
-    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let manifold = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
     ///
     /// let plane = Plane::new(Vec3::new(0.0, 1.0, 0.0));
     /// let offset_plane = OffsetPlane::new(plane, 0.0);
@@ -666,17 +781,24 @@ impl Manifold {
     /// combined and applied lazily.
     ///
     /// # Arguments
+    ///
     /// * `translation`: The vector to add to every vertex.
     ///
     /// # Returns
-    /// [Manifold]: The translated manifold.
+    ///
+    /// A new manifold translated by the `translation`.
     ///
     /// # Examples
     /// ```
-    /// use manifold3d::types::Vec3;
+    /// use manifold3d::types::{PositiveF64, Vec3};
     /// use manifold3d::Manifold;
     ///
-    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let manifold = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
     /// let translated_manifold = manifold.translate(Vec3::new(1.0, 2.0, 3.0));
     /// ```
     pub fn translate(&self, translation: impl Into<Vec3>) -> Manifold {
@@ -699,15 +821,21 @@ impl Manifold {
     /// * `rotation`: The rotation vector.
     ///
     /// # Returns
-    /// A new rotated manifold object.
+    ///
+    /// A new manifold rotated by the `translation`.
     ///
     /// # Examples
     /// ```
     /// use manifold3d::manifold::Rotation;
-    /// use manifold3d::types::{NormalizedAngle, Vec3};
+    /// use manifold3d::types::{NormalizedAngle, PositiveF64, Vec3};
     /// use manifold3d::Manifold;
     ///
-    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let manifold = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
     ///
     /// let rotation = Rotation::new(
     ///     NormalizedAngle::from_degrees(0.0),
@@ -737,14 +865,19 @@ impl Manifold {
     /// * `scale`: The vector to multiply every vertex by per component.
     ///
     /// # Returns
-    /// A new scaled manifold object.
+    /// A new manifold object scaled by the `scale` vector.
     ///
     /// # Examples
     /// ```
-    /// use manifold3d::types::Vec3;
+    /// use manifold3d::types::{PositiveF64, Vec3};
     /// use manifold3d::Manifold;
     ///
-    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let manifold = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
     /// let scaled_manifold = manifold.scale(Vec3::new(2.0, 2.0, 2.0));
     /// ```
     pub fn scale(&self, scale: impl Into<Vec3>) -> Manifold {
@@ -767,15 +900,20 @@ impl Manifold {
     /// * `plane`: The plane to be mirrored over.
     ///
     /// # Returns
-    /// A new manifold object that is the result of mirroring this manifold over the given plane.
+    /// A new manifold object mirrored over the given `plane`.
     ///
     /// # Examples
     /// ```
     /// use manifold3d::manifold::Plane;
-    /// use manifold3d::types::Vec3;
+    /// use manifold3d::types::{PositiveF64, Vec3};
     /// use manifold3d::Manifold;
     ///
-    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let manifold = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
     /// let plane = Plane::new(Vec3::new(1.0, 0.0, 0.0));
     /// let mirrored_manifold = manifold.mirror(plane);
     /// ```
@@ -797,10 +935,12 @@ impl Manifold {
     /// The topology of the manifold remains unchanged.
     ///
     /// # Arguments
+    ///
     /// * `warp`: A pinned reference to a type implementing the [Warp] trait.
     ///   This warp object defines the transformation logic.
     ///
     /// # Returns
+    ///
     /// A new manifold object representing the warped manifold.
     ///
     /// # Examples
@@ -911,10 +1051,15 @@ impl Manifold {
     /// # Examples
     /// ```
     /// use manifold3d::manifold::MinimumSmoothness;
-    /// use manifold3d::types::NormalizedAngle;
+    /// use manifold3d::types::{NormalizedAngle, PositiveF64};
     /// use manifold3d::Manifold;
     ///
-    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let manifold = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
     ///
     /// let angle = NormalizedAngle::from_degrees(60.0);
     /// let minimum_smoothness = MinimumSmoothness::new(MinimumSmoothness::MINIMUM).unwrap();
@@ -1076,9 +1221,15 @@ impl Manifold {
     /// # Examples
     ///
     /// ```
+    /// use manifold3d::types::PositiveF64;
     /// use manifold3d::Manifold;
     ///
-    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let manifold = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
     /// assert_eq!(manifold.vertex_count(), 8);
     /// ```
     pub fn vertex_count(&self) -> usize {
@@ -1090,9 +1241,15 @@ impl Manifold {
     /// # Examples
     ///
     /// ```
+    /// use manifold3d::types::PositiveF64;
     /// use manifold3d::Manifold;
     ///
-    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let manifold = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
     /// assert_eq!(manifold.edge_count(), 18);
     /// ```
     pub fn edge_count(&self) -> usize {
@@ -1104,9 +1261,15 @@ impl Manifold {
     /// # Examples
     ///
     /// ```
+    /// use manifold3d::types::PositiveF64;
     /// use manifold3d::Manifold;
     ///
-    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let manifold = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
     /// assert_eq!(manifold.triangle_count(), 12);
     /// ```
     pub fn triangle_count(&self) -> usize {
@@ -1117,9 +1280,15 @@ impl Manifold {
     ///
     /// # Examples
     /// ```
+    /// use manifold3d::types::PositiveF64;
     /// use manifold3d::Manifold;
     ///
-    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let manifold = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
     /// assert_eq!(manifold.properties_per_vertex_count(), 0);
     /// ```
     pub fn properties_per_vertex_count(&self) -> usize {
@@ -1131,9 +1300,15 @@ impl Manifold {
     /// # Examples
     ///
     /// ```
+    /// use manifold3d::types::PositiveF64;
     /// use manifold3d::{BoundingBox, Manifold};
     ///
-    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let manifold = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
     /// let bounding_box = manifold.bounding_box();
     /// ```
     pub fn bounding_box(&self) -> BoundingBox {
@@ -1185,9 +1360,15 @@ impl Manifold {
     ///
     /// # Examples
     /// ```
+    /// use manifold3d::types::PositiveF64;
     /// use manifold3d::Manifold;
     ///
-    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let manifold = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
     /// assert_eq!(manifold.surface_area(), 6.0)
     /// ```
     pub fn surface_area(&self) -> f64 {
@@ -1198,9 +1379,15 @@ impl Manifold {
     ///
     /// # Examples
     /// ```
+    /// use manifold3d::types::PositiveF64;
     /// use manifold3d::Manifold;
     ///
-    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let manifold = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
     ///
     /// assert_eq!(manifold.volume(), 1.0)
     /// ```
@@ -1213,9 +1400,15 @@ impl Manifold {
     /// # Examples
     ///
     /// ```
+    /// use manifold3d::types::PositiveF64;
     /// use manifold3d::Manifold;
     ///
-    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let manifold = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
     /// let segments = manifold.circular_segments(5.0);
     /// ```
     pub fn circular_segments(&self, radius: f64) -> i32 {
@@ -1227,6 +1420,7 @@ impl Manifold {
     /// If this manifold is a product of some operation it returns an empty option.
     ///
     /// # Returns
+    ///
     /// The original ID if the mesh is an original. Otherwise, an empty response.
     ///
     /// # Examples
@@ -1247,6 +1441,74 @@ impl Manifold {
         }
     }
 
+    /// Replaces the properties of vertices in a manifold using a custom property management function.
+    ///
+    /// This function allows replacing the vertex properties with new properties as defined by the
+    /// provided [ManageVertexProperties] object.
+    ///
+    /// # Arguments
+    ///
+    /// * `manage_vertex_properties`: A pinned reference to an object that implements the
+    ///   necessary traits for replacing vertex properties.
+    ///
+    /// # Returns
+    ///
+    /// A new manifold object with updated vertex properties.
+    ///
+    /// # Examples
+    /// ```rust
+    /// use manifold3d::manifold;
+    /// use manifold3d::manifold::ReplaceVertexProperties;
+    /// use manifold3d::types::Point3;
+    /// use manifold3d::Manifold;
+    /// use std::pin::Pin;
+    ///
+    /// pub struct MyPropertyReplacerCtx {
+    ///     vertex_count: usize,
+    /// }
+    ///
+    /// #[manifold::manage_vertex_properties]
+    /// pub struct MyPropertyReplacer {}
+    ///
+    /// impl ReplaceVertexProperties for MyPropertyReplacer {
+    ///     type CTX = MyPropertyReplacerCtx;
+    ///
+    ///     fn new_ctx(&self) -> Self::CTX {
+    ///         MyPropertyReplacerCtx { vertex_count: 0 }
+    ///     }
+    ///
+    ///     fn new_vertex_properties_count(&self, target: &Manifold) -> usize {
+    ///         // We add 3 more properties (channels) per vertex
+    ///         target.properties_per_vertex_count() + 3
+    ///     }
+    ///
+    ///     fn replace_vertex_properties(
+    ///         &self,
+    ///         ctx: &mut Self::CTX,
+    ///         vertex_position: Point3,
+    ///         old_properties: &[f64],
+    ///         new_properties: &mut [f64],
+    ///     ) -> () {
+    ///         ctx.vertex_count += 1;
+    ///         // Copy existing old properties to new properties
+    ///         new_properties[..old_properties.len()].copy_from_slice(&old_properties);
+    ///
+    ///         // Fill new channels with some data
+    ///         let new_data_index = old_properties.len();
+    ///         new_properties[new_data_index] = (ctx.vertex_count + 1) as f64;
+    ///         new_properties[new_data_index + 1] = (ctx.vertex_count + 2) as f64;
+    ///         new_properties[new_data_index + 2] = (ctx.vertex_count + 3) as f64;
+    ///     }
+    /// }
+    ///
+    /// let replacer = MyPropertyReplacer {};
+    ///
+    /// let manifold = Manifold::new_tetrahedron();
+    /// assert_eq!(manifold.properties_per_vertex_count(), 0);
+    ///
+    /// let manifold = manifold.replace_vertex_properties(Pin::new(&replacer));
+    /// assert_eq!(manifold.properties_per_vertex_count(), 3)
+    /// ```
     pub fn replace_vertex_properties(
         &self,
         manage_vertex_properties: Pin<&impl ManageVertexProperties>,
@@ -1282,14 +1544,145 @@ impl Manifold {
         Manifold::from_ptr(manifold_ptr)
     }
 
-    pub fn calculate_curvature() -> Manifold {
-        todo!()
+    /// Calculates the curvature properties for a manifold, including Gaussian and mean curvatures,
+    /// and assigns these values as vertex properties on specified channels, if provided.
+    ///
+    /// # Arguments
+    ///
+    /// * `gaussian_property_index`: Optional index of the property channel in which Gaussian curvature is stored;
+    ///   a value of `None` will result in no storage (equivalent to an index of `-1`).
+    ///   The property set automatically expands to include the specified channel.
+    /// * `mean_property_index`: Optional index of the property channel in which mean curvature is stored;
+    ///   a value of `None` will result in no storage (equivalent to an index of `-1`).
+    ///   The property set automatically expands to include the specified channel.
+    ///
+    /// # Returns
+    ///
+    /// A new manifold object with updated curvature properties, if indices are provided.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use manifold3d::types::{NonNegativeI32, PositiveF64, PositiveI32};
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold = Manifold::new_sphere(PositiveF64::new(1.0).unwrap(), None::<PositiveI32>);
+    /// assert_eq!(manifold.properties_per_vertex_count(), 0);
+    ///
+    /// // The updated_manifold now has the curvature properties stored in the specified channels.
+    /// let updated_manifold = manifold.calculate_curvature(
+    ///     Some(NonNegativeI32::new(0).unwrap()),
+    ///     Some(NonNegativeI32::new(1).unwrap()),
+    /// );
+    /// assert_eq!(updated_manifold.properties_per_vertex_count(), 2);
+    ///
+    /// // No curvature properties are stored, but the call is valid.
+    /// let manifold_without_curvature =
+    ///     manifold.calculate_curvature(None::<NonNegativeI32>, None::<NonNegativeI32>);
+    /// assert_eq!(manifold_without_curvature.properties_per_vertex_count(), 0);
+    /// ```
+    pub fn calculate_curvature(
+        &self,
+        gaussian_property_index: Option<impl Into<NonNegativeI32>>,
+        mean_property_index: Option<impl Into<NonNegativeI32>>,
+    ) -> Manifold {
+        let gaussian_property_index = match gaussian_property_index {
+            None => -1,
+            Some(value) => value.into().get(),
+        };
+        let mean_property_index = match mean_property_index {
+            None => -1,
+            Some(value) => value.into().get(),
+        };
+
+        let manifold_ptr = unsafe {
+            manifold_calculate_curvature(
+                manifold_alloc_manifold() as *mut c_void,
+                self.0,
+                gaussian_property_index,
+                mean_property_index,
+            )
+        };
+        Manifold::from_ptr(manifold_ptr)
     }
 
-    pub fn minimum_gap(&self, _other: &Manifold) -> f64 {
-        todo!()
+    /// Computes the minimum gap between two manifolds.
+    ///
+    /// # Arguments
+    ///
+    /// * `other`: The other manifold to compare with.
+    /// * `search_length`: The maximum distance to search for a minimum gap.
+    ///
+    /// # Returns
+    ///
+    /// The minimum distance between the two manifolds, ranging from 0 up to `search_length`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use manifold3d::types::{PositiveF64, Vec3};
+    /// use manifold3d::Manifold;
+    ///
+    /// let a = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
+    /// let b = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// )
+    /// .translate(Vec3::new(1.5, 0.0, 0.0));
+    ///
+    /// let search_length = PositiveF64::new(10.0).unwrap();
+    /// let min_gap = a.minimum_gap(&b, search_length);
+    ///
+    /// assert_eq!(min_gap, 0.5);
+    /// ```
+    pub fn minimum_gap(&self, other: &Manifold, search_length: impl Into<PositiveF64>) -> f64 {
+        unsafe { manifold_min_gap(self.0, other.0, search_length.into().into()) }
     }
 
+    /// Calculates vertex normals for the manifold.
+    /// The normal vector for each vertex will be stored as vertex properties in the newly
+    /// created returned manifold.
+    ///
+    /// Flat regions across several triangles will maintain a flat appearance.
+    ///
+    /// # Arguments
+    ///
+    /// * `vertex_normal_first_property_index`: The property channel in which to store the X
+    ///   values of the normals. The X, Y, and Z channels will be sequential. The
+    ///   property set will be automatically expanded such that the properties per vertex count will
+    ///   be at least `vertex_normal_first_property_index + 3`.
+    /// * `minimum_sharpness_angle`: Any edges with angles greater than this value will
+    ///   remain sharp, getting different normal vector properties on each side of the
+    ///   edge. By default, no edges are sharp and all normals are shared. With a value
+    ///   of zero, the model is faceted and all normals match their triangle normals,
+    ///   but in this case it would be better not to calculate normals at all.
+    ///
+    /// # Returns
+    ///
+    /// A new manifold object with added normals properties.
+    ///
+    /// # Examples
+    /// ```rust
+    /// use manifold3d::types::{NonNegativeI32, NormalizedAngle, PositiveF64, PositiveI32};
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold = Manifold::new_sphere(PositiveF64::new(1.0).unwrap(), None::<PositiveI32>);
+    ///
+    /// let vertex_normal_first_property_index = NonNegativeI32::new(0).unwrap();
+    /// let sharpness_angle = NormalizedAngle::from_degrees(30.0);
+    ///
+    /// assert_eq!(manifold.properties_per_vertex_count(), 0usize);
+    /// let manifold_with_normals =
+    ///     manifold.calculate_normals(vertex_normal_first_property_index, sharpness_angle);
+    /// assert_eq!(manifold_with_normals.properties_per_vertex_count(), 3usize);
+    /// ```
     pub fn calculate_normals(
         &self,
         vertex_normal_first_property_index: impl Into<NonNegativeI32>,
@@ -1311,9 +1704,15 @@ impl Manifold {
     /// # Examples
     ///
     /// ```
+    /// use manifold3d::types::PositiveF64;
     /// use manifold3d::{Manifold, MeshGL};
     ///
-    /// let manifold = Manifold::new_cuboid(1u8, 1u8, 1u8, true);
+    /// let manifold = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
     /// let mesh = manifold.mesh();
     /// ```
     pub fn mesh(&self) -> MeshGL {
