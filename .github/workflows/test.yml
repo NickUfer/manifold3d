@@ -1,0 +1,64 @@
+name: Test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build_and_test_linux:
+    name: 'Build & Test Linux - Features: ${{matrix.features}}'
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        features:
+          - ''
+          - 'export'
+          - 'parallel'
+          - 'export, parallel'
+          - 'static'
+          - 'export, static'
+          - 'parallel, static'
+          - 'export, parallel, static'
+          - 'nalgebra_interop'
+          - 'export, nalgebra_interop'
+          - 'parallel, nalgebra_interop'
+          - 'export, parallel, nalgebra_interop'
+          - 'static, nalgebra_interop'
+          - 'export, static, nalgebra_interop'
+          - 'parallel, static, nalgebra_interop'
+          - 'export, parallel, static, nalgebra_interop'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y --no-install-recommends libclipper2 libassimp-dev libtbb-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build
+        run: cargo build --features '${{matrix.features}}' --verbose
+      - name: Run tests
+        run: cargo test --features '${{matrix.features}}' --verbose
+  build_and_test_windows:
+    name: 'Build & Test Windows - Features: ${{matrix.features}}'
+    timeout-minutes: 10
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        features:
+          - 'static'
+          - 'nalgebra_interop'
+          - 'static, nalgebra_interop'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jwlawson/actions-setup-cmake@v2
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build
+        run: cargo build --features '${{matrix.features}}' --verbose
+      - name: Run tests
+        run: cargo test --features '${{matrix.features}}' --verbose
