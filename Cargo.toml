@@ -13,11 +13,11 @@ include = [
 ]
 
 [lib]
-crate-type = ["cdylib", "rlib", "staticlib"]
+crate-type = ["lib"]
 
 [dependencies]
 manifold3d-macros = { path = "crates/macros", version = "0.0.3" }
-manifold3d-sys = { version = "0.0.4" }
+manifold3d-sys = { version = "0.0.5" }
 thiserror = "2.0.3"
 num-traits = "0.2.19"
 nalgebra = { version = "0.33.2", optional = true }
@@ -26,6 +26,7 @@ nalgebra = { version = "0.33.2", optional = true }
 nalgebra_interop = ["dep:nalgebra"]
 export = ["manifold3d-sys/export"]
 parallel = ["manifold3d-sys/parallel"]
+static = ["manifold3d-sys/static"]
 
 [workspace]
 members = [

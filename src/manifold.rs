@@ -1300,8 +1300,7 @@ impl Manifold {
                 manifold_alloc_manifold() as *mut c_void,
                 self.0,
                 vertex_normal_first_property_index.into().into(),
-                // TODO https://github.com/elalish/manifold/issues/1083
-                minimum_sharpness_angle.get() as i32,
+                minimum_sharpness_angle.get(),
             )
         };
         Manifold::from_ptr(manifold_ptr)
