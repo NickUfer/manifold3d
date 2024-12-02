@@ -95,10 +95,12 @@ pub fn reset_to_circular_defaults() {
 
 #[cfg(test)]
 mod tests {
+    use serial_test::serial;
     use crate::quality::*;
     use crate::types::{NormalizedAngle, PositiveF64, PositiveI32};
 
     #[test]
+    #[serial]
     fn test_set_and_get_circular_segments() {
         reset_to_circular_defaults();
         let circular_segments = 42;
@@ -108,6 +110,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_set_min_circular_angle_and_edge_length_and_get_circular_segments() {
         reset_to_circular_defaults();
         set_min_circular_angle(NormalizedAngle::from_degrees(365.0));

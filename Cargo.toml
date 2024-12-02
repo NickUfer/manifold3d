@@ -22,6 +22,9 @@ thiserror = "2.0.3"
 num-traits = "0.2.19"
 nalgebra = { version = "0.33.2", optional = true }
 
+[dev-dependencies]
+serial_test = "3.2"
+
 [features]
 nalgebra_interop = ["dep:nalgebra"]
 export = ["manifold3d-sys/export"]
