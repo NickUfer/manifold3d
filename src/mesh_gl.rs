@@ -1,5 +1,5 @@
-use crate::manifold::{HalfEdgeIndex, Manifold};
-use crate::{check_error, Error};
+use crate::manifold::Manifold;
+use crate::{check_error, Error, HalfEdgeIndex};
 use manifold3d_sys::{
     manifold_alloc_manifold, manifold_alloc_meshgl, manifold_delete_meshgl, manifold_meshgl_copy,
     manifold_meshgl_face_id_length, manifold_meshgl_merge, manifold_meshgl_merge_length,
@@ -11,9 +11,6 @@ use manifold3d_sys::{
 };
 use std::alloc::{alloc, Layout};
 use std::os::raw::c_void;
-
-pub type HalfedgeIndex = usize;
-pub type Smoothness = f64;
 
 pub struct MeshGL(*mut ManifoldMeshGL);
 
@@ -93,10 +90,13 @@ impl MeshGL {
                 let (half_edge_indices, half_edge_smoothness): (Vec<_>, Vec<_>) =
                     vec.into_iter().unzip();
 
-                let (half_edge_indices_ptr, length, _) = half_edge_indices.into_raw_parts();
-                let (half_edge_smoothness_ptr, _, _) = half_edge_smoothness.into_raw_parts();
-
-                (half_edge_indices_ptr, half_edge_smoothness_ptr, length)
+                let half_edge_indices_ptr = half_edge_indices.as_ptr() as *mut HalfEdgeIndex;
+                let half_edge_smoothness_ptr = half_edge_smoothness.as_ptr() as *mut f64;
+                (
+                    half_edge_indices_ptr,
+                    half_edge_smoothness_ptr,
+                    half_edge_indices.len(),
+                )
             }
         };
 

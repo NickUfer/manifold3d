@@ -30,7 +30,7 @@ use crate::types::{
 
 pub use crate::macros::manifold::*;
 use crate::manifold_vec::ManifoldVec;
-use crate::{ManifoldErrorExt, Polygons};
+use crate::{HalfEdgeIndex, ManifoldErrorExt, Polygons};
 pub use properties::*;
 pub use warp::*;
 
@@ -2138,8 +2138,6 @@ impl Drop for Manifold {
         }
     }
 }
-
-pub type HalfEdgeIndex = usize;
 
 /// Represents a boolean operation that can be performed on a [Manifold].
 pub enum BooleanOperation {

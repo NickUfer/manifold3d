@@ -1,4 +1,3 @@
-#![feature(vec_into_raw_parts)]
 #![allow(dead_code)]
 
 mod bounding_box;
@@ -13,6 +12,9 @@ mod simple_polygon;
 
 pub mod manifold;
 pub mod types;
+
+pub type HalfEdgeIndex = usize;
+pub type Smoothness = f64;
 
 pub use bounding_box::*;
 pub use cross_section::*;
