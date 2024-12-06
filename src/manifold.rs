@@ -3,28 +3,34 @@ use crate::error::{check_error, Error};
 use crate::mesh_gl::MeshGL;
 use manifold3d_sys::{
     manifold_alloc_box, manifold_alloc_manifold, manifold_alloc_manifold_vec,
-    manifold_alloc_meshgl, manifold_batch_boolean, manifold_boolean, manifold_bounding_box,
-    manifold_calculate_curvature, manifold_calculate_normals, manifold_copy, manifold_cube,
-    manifold_cylinder, manifold_delete_manifold, manifold_difference, manifold_empty,
+    manifold_alloc_meshgl, manifold_as_original, manifold_batch_boolean, manifold_batch_hull,
+    manifold_boolean, manifold_bounding_box, manifold_calculate_curvature,
+    manifold_calculate_normals, manifold_copy, manifold_cube, manifold_cylinder,
+    manifold_decompose, manifold_delete_manifold, manifold_difference, manifold_empty,
     manifold_epsilon, manifold_genus, manifold_get_circular_segments, manifold_get_meshgl,
-    manifold_intersection, manifold_is_empty, manifold_manifold_vec, manifold_manifold_vec_set,
-    manifold_min_gap, manifold_mirror, manifold_num_edge, manifold_num_prop, manifold_num_tri,
-    manifold_num_vert, manifold_of_meshgl, manifold_original_id, manifold_refine,
-    manifold_refine_to_length, manifold_refine_to_tolerance, manifold_scale,
-    manifold_set_properties, manifold_smooth_by_normals, manifold_smooth_out, manifold_sphere,
-    manifold_split, manifold_split_by_plane, manifold_surface_area, manifold_tetrahedron,
-    manifold_translate, manifold_trim_by_plane, manifold_union, manifold_volume, manifold_warp,
-    ManifoldManifold, ManifoldOpType,
+    manifold_hull, manifold_hull_pts, manifold_intersection, manifold_is_empty,
+    manifold_manifold_vec, manifold_manifold_vec_set, manifold_min_gap, manifold_mirror,
+    manifold_num_edge, manifold_num_prop, manifold_num_tri, manifold_num_vert, manifold_of_meshgl,
+    manifold_original_id, manifold_project, manifold_refine, manifold_refine_to_length,
+    manifold_refine_to_tolerance, manifold_scale, manifold_set_properties, manifold_slice,
+    manifold_smooth_by_normals, manifold_smooth_out, manifold_sphere, manifold_split,
+    manifold_split_by_plane, manifold_status, manifold_surface_area, manifold_tetrahedron,
+    manifold_transform, manifold_translate, manifold_trim_by_plane, manifold_union,
+    manifold_volume, manifold_warp, ManifoldManifold, ManifoldOpType, ManifoldVec3,
 };
+use std::mem::transmute;
 use std::os::raw::{c_int, c_void};
 use std::pin::{pin, Pin};
 use thiserror::Error;
 
 use crate::types::{
-    NonNegativeF64, NonNegativeI32, NormalizedAngle, PositiveF64, PositiveI32, Vec3,
+    Matrix4x3, NonNegativeF64, NonNegativeI32, NormalizedAngle, PositiveF64, PositiveI32, Vec2,
+    Vec3,
 };
 
 pub use crate::macros::manifold::*;
+use crate::manifold_vec::ManifoldVec;
+use crate::{ManifoldErrorExt, Polygons};
 pub use properties::*;
 pub use warp::*;
 
@@ -33,6 +39,23 @@ pub struct Manifold(*mut ManifoldManifold);
 
 impl Manifold {
     // Constructors
+
+    /// Creates a new, empty manifold instance.
+    ///
+    /// # Returns
+    ///
+    /// An empty manifold object, initialized to represent an empty geometry.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use manifold3d::Manifold;
+    ///
+    /// let empty_manifold = Manifold::new_empty();
+    /// ```
+    pub fn new_empty() -> Manifold {
+        Manifold::from_ptr(unsafe { manifold_empty(manifold_alloc_manifold() as *mut c_void) })
+    }
 
     /// Creates a new tetrahedron manifold.
     ///
@@ -366,23 +389,6 @@ impl Manifold {
         check_error(Manifold::from_ptr(manifold_ptr))
     }
 
-    /// Creates a new, empty manifold instance.
-    ///
-    /// # Returns
-    ///
-    /// An empty manifold object, initialized to represent an empty geometry.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use manifold3d::Manifold;
-    ///
-    /// let empty_manifold = Manifold::new_empty();
-    /// ```
-    pub fn new_empty() -> Manifold {
-        Manifold::from_ptr(unsafe { manifold_empty(manifold_alloc_manifold() as *mut c_void) })
-    }
-
     /// Constructs a manifold object from a [`MeshGL`] representation.
     ///
     /// # Arguments
@@ -392,10 +398,96 @@ impl Manifold {
     /// # Returns
     ///
     /// A new manifold object representing the 3D manifold created from the
-    /// provided [MeshGL]. In case of failure, an [Error] is returned encapsulating the reason for
+    /// provided [`MeshGL`]. In case of failure, an [`Error`] is returned encapsulating the reason for
     /// failure.
     pub fn from_mesh_gl(mesh_gl: &MeshGL) -> Result<Manifold, Error> {
         Manifold::try_from(mesh_gl)
+    }
+
+    /// Constructs a smooth version of the input [`MeshGL`] mesh by creating tangents.
+    ///
+    /// The actual triangle resolution remains unchanged; use [`Manifold::refine_via_edge_splits`]
+    /// to further interpolate to a higher-resolution curve.
+    ///
+    /// By default, each edge is assessed for maximum smoothness, aiming to minimize the
+    /// maximum mean curvature magnitude. Higher-order derivatives are not considered,
+    /// as interpolation is carried out independently per triangle, with constraints shared
+    /// only along their boundaries.
+    ///
+    /// # Arguments
+    ///
+    /// * `mesh_gl`: Reference to the [`MeshGL`] object representing the geometric structure of the input mesh.
+    /// * `half_edge_smoothness`: Optionally, provide a vector of sharpened halfedges, typically a small subset
+    ///   of all halfedges. The order of entries is irrelevant, as each specifies the desired smoothness
+    ///   (ranging from zero to one, with one being the default for all unspecified halfedges) alongside the
+    ///   halfedge index (calculated as 3 * triangle index + 0, 1, 2, where 0 is the edge between triVert 0 and 1, etc).
+    ///   A smoothness of zero results in a sharp crease. Smoothness is averaged along each edge; when
+    ///   two sharpened edges meet at a vertex, their tangents are aligned to be colinear, allowing continuity
+    ///   of the sharpened edge. Vertices with only one sharpened edge are completely smooth, enabling
+    ///   sharpened edges to smoothly disappear at their ends. To sharpen a single vertex, sharpen all
+    ///   incident edges, which facilitates forming cones.
+    ///
+    /// # Returns
+    ///
+    /// A new manifold that represents a smoothed version of the original mesh.
+    ///
+    /// # Examples
+    /// ```rust
+    /// use manifold3d::types::PositiveF64;
+    /// use manifold3d::{Manifold, MeshGL};
+    ///
+    /// let manifold = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
+    /// let mesh_gl = manifold.as_mesh();
+    ///
+    /// let half_edge_smoothness = vec![(0, 0.5), (1, 1.0)];
+    /// let smoothed_manifold = mesh_gl.smooth(Some(half_edge_smoothness));
+    /// ```
+    pub fn smooth(
+        mesh_gl: &MeshGL,
+        half_edge_smoothness: Option<Vec<(HalfEdgeIndex, f64)>>,
+    ) -> Result<Manifold, Error> {
+        mesh_gl.smooth(half_edge_smoothness)
+    }
+
+    // pub fn smooth64(mesh_gl: &MeshGL) -> Manifold
+
+    pub fn extrude_polygons(
+        polygons: &Polygons,
+        height: impl Into<PositiveF64>,
+        division_count: impl Into<PositiveI32>,
+        twist_degrees: f64,
+        top_scaling: Option<impl Into<Vec2>>,
+    ) -> Result<Manifold, Error> {
+        polygons.extrude(height, division_count, twist_degrees, top_scaling)
+    }
+
+    pub fn revolve_polygons(
+        polygons: &Polygons,
+        circular_segments: Option<impl Into<PositiveI32>>,
+        revolve_degrees: Option<impl Into<NormalizedAngle>>,
+    ) -> Result<Manifold, Error> {
+        polygons.revolve(circular_segments, revolve_degrees)
+    }
+
+    pub fn compose_from_vec(manifold_vec: &ManifoldVec) -> Manifold {
+        manifold_vec.compose()
+    }
+
+    pub fn decompose(&self) -> ManifoldVec {
+        let manifold_vec_ptr =
+            unsafe { manifold_decompose(manifold_alloc_manifold_vec() as *mut c_void, self.0) };
+        ManifoldVec::from_ptr(manifold_vec_ptr)
+    }
+
+    pub fn as_original(&self) -> Manifold {
+        let manifold_ptr =
+            unsafe { manifold_as_original(manifold_alloc_manifold() as *mut c_void, self.0) };
+        Manifold::from_ptr(manifold_ptr)
     }
 
     pub(crate) fn from_ptr(ptr: *mut ManifoldManifold) -> Manifold {
@@ -470,6 +562,11 @@ impl Manifold {
     /// # Returns
     ///
     /// A new manifold object representing the result from the boolean operations.
+    ///
+    /// # Panics
+    ///
+    /// The function will panic if the size of the `others` list plus `self` (1) would exceed
+    /// the maximum allowed count of elements of a slice.
     ///
     /// # Examples
     /// ```
@@ -775,6 +872,205 @@ impl Manifold {
         Manifold::from_ptr(manifold_ptr)
     }
 
+    // 3D to 2D
+
+    /// Returns the cross-section of this object parallel to the x-y plane at the specified height.
+    ///
+    /// The slicing operation is performed using direct calculation at a specified height, resulting
+    /// in a set of polygons representing the cross-section of the object.
+    ///
+    /// # Arguments
+    ///
+    /// * `height`: The height at which the object is sliced.
+    ///
+    /// # Returns
+    ///
+    /// A [Polygons] object representing the cross-section of the current object at the specified height.
+    ///
+    /// # Examples
+    /// ```rust
+    /// use manifold3d::types::PositiveF64;
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
+    /// let height = 0.5;
+    /// let cross_section = manifold.slice_by_height(PositiveF64::new(height).unwrap());
+    /// ```
+    pub fn slice_by_height(&self, height: impl Into<PositiveF64>) -> Polygons {
+        let polygons_ptr = unsafe {
+            manifold_slice(
+                manifold_alloc_manifold() as *mut c_void,
+                self.0,
+                height.into().into(),
+            )
+        };
+        Polygons::from_ptr(polygons_ptr)
+    }
+
+    /// Projects the manifold onto the X-Y plane and returns the resulting polygons.
+    ///
+    /// Returns polygons representing the projected outline of the given manifold.
+    /// These polygons will often self-intersect, so it is recommended to run them
+    /// through [`Polygons::cross_section`] with [`crate::FillRule::Positive`] to get a sensible
+    /// result before using them.
+    ///
+    /// # Returns
+    ///
+    /// A [Polygons] object representing the projected 2D outline of the 3D
+    /// structure.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use manifold3d::types::PositiveF64;
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
+    /// let projected_polygons = manifold.project();
+    /// ```
+    pub fn project(&self) -> Polygons {
+        let polygons_ptr =
+            unsafe { manifold_project(manifold_alloc_manifold() as *mut c_void, self.0) };
+        Polygons::from_ptr(polygons_ptr)
+    }
+
+    // Convex Hulls
+
+    /// Computes the convex hull of the current manifold.
+    ///
+    /// # Returns
+    ///
+    /// A newly constructed manifold representing the convex hull of the input data.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold = Manifold::new_tetrahedron();
+    /// let convex_hull = manifold.convex_hull();
+    /// ```
+    pub fn convex_hull(&self) -> Manifold {
+        let manifold_ptr =
+            unsafe { manifold_hull(manifold_alloc_manifold() as *mut c_void, self.0) };
+        Manifold::from_ptr(manifold_ptr)
+    }
+
+    /// Computes the convex hull enveloping the current manifold and an array of other manifolds.
+    ///
+    /// # Arguments
+    ///
+    /// * `others`: A slice of manifold instances for which the convex hull is to be computed
+    ///   together with the current manifold. Each manifold is combined into a single operation
+    ///   to form the convex hull.
+    ///
+    /// # Returns
+    ///
+    /// A new manifold representing the convex hull of the provided manifolds, including
+    /// the current manifold. If no additional manifolds are provided, the function returns a clone
+    /// of the current manifold.
+    ///
+    /// # Panics
+    ///
+    /// The function will panic if the size of the `others` list plus `self` (1) would exceed
+    /// the maximum allowed count of elements of a slice.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use manifold3d::types::PositiveF64;
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold1 = Manifold::new_tetrahedron();
+    /// let manifold2 = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
+    ///
+    /// let result = manifold1.batch_convex_hull(&[manifold2]);
+    /// ```
+    pub fn batch_convex_hull(&self, others: &[Manifold]) -> Manifold {
+        if others.is_empty() {
+            return self.clone();
+        }
+        // Check includes self in vec
+        if others.len() == usize::MAX {
+            panic!("Batch operation exceeds maximum allowed count of elements")
+        }
+
+        let batch_vec_ptr = unsafe {
+            manifold_manifold_vec(
+                manifold_alloc_manifold_vec() as *mut c_void,
+                others.len() + 1,
+            )
+        };
+        let mut batch_vec_index = 0;
+        unsafe { manifold_manifold_vec_set(batch_vec_ptr, batch_vec_index, self.0) };
+        batch_vec_index += 1;
+
+        for other in others {
+            unsafe { manifold_manifold_vec_set(batch_vec_ptr, batch_vec_index, other.0) };
+            batch_vec_index += 1;
+        }
+        let manifold_ptr =
+            unsafe { manifold_batch_hull(manifold_alloc_manifold() as *mut c_void, batch_vec_ptr) };
+        Manifold::from_ptr(manifold_ptr)
+    }
+
+    /// Computes the convex hull from a set of 3D points.
+    ///
+    /// # Arguments
+    ///
+    /// * `points`: An array slice of [`Vec3`] containing the 3D points from which the convex hull is computed.
+    ///
+    /// # Returns
+    ///
+    /// A manifold representing the convex hull of the provided points.
+    /// If the input has fewer than four points, or they are all coplanar, an empty manifold is returned.
+    ///
+    /// # Examples
+    ///
+    /// Create a valid manifold from 4 points:
+    /// ```
+    /// use manifold3d::types::Vec3;
+    /// use manifold3d::Manifold;
+    ///
+    /// let points = vec![
+    ///     Vec3::new(0.0, 0.0, 0.0),
+    ///     Vec3::new(1.0, 0.0, 0.0),
+    ///     Vec3::new(0.0, 1.0, 0.0),
+    ///     Vec3::new(0.0, 0.0, 1.0),
+    /// ];
+    ///
+    /// let manifold = Manifold::convex_hull_from_points(&points);
+    /// assert_eq!(manifold.is_empty(), false)
+    /// ```
+    pub fn convex_hull_from_points(points: &[Vec3]) -> Manifold {
+        let points: &[ManifoldVec3] = unsafe { transmute(points) };
+        let points_ptr = points.as_ptr();
+
+        let manifold_ptr = unsafe {
+            manifold_hull_pts(
+                manifold_alloc_manifold() as *mut c_void,
+                points_ptr as *mut ManifoldVec3,
+                points.len(),
+            )
+        };
+        Manifold::from_ptr(manifold_ptr)
+    }
+
     // Transformations
 
     /// Moves the manifold in space. This operation can be chained. Transforms are
@@ -889,6 +1185,73 @@ impl Manifold {
                 scale.x,
                 scale.y,
                 scale.z,
+            )
+        };
+        Manifold::from_ptr(manifold_ptr)
+    }
+
+    /// Applies a transformation to a [Manifold] using an affine transformation matrix.
+    ///
+    /// # Arguments
+    ///
+    /// * `matrix`: A 4x3 affine transformation matrix represented by the [Matrix4x3] structure,
+    ///   which is used to apply translation, rotation, or scaling transformations to the manifold.
+    ///
+    /// # Returns
+    ///
+    /// Returns a new manifold that is the result of applying the affine transformation
+    /// described by the input matrix to the original manifold.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use manifold3d::types::{Matrix4x3, Vec3};
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold = Manifold::new_tetrahedron();
+    /// let matrix = Matrix4x3::new([
+    ///     Vec3 {
+    ///         x: 1.0,
+    ///         y: 1.0,
+    ///         z: 1.0,
+    ///     },
+    ///     Vec3 {
+    ///         x: 1.0,
+    ///         y: 1.0,
+    ///         z: 1.0,
+    ///     },
+    ///     Vec3 {
+    ///         x: 1.0,
+    ///         y: 1.0,
+    ///         z: 1.0,
+    ///     },
+    ///     Vec3 {
+    ///         x: 1.0,
+    ///         y: 1.0,
+    ///         z: 1.0,
+    ///     },
+    /// ]); // Fill with appropriate values
+    ///
+    /// let transformed_manifold = manifold.transform(matrix);
+    /// ```
+    pub fn transform(&self, matrix: impl Into<Matrix4x3>) -> Manifold {
+        let matrix = matrix.into();
+        let manifold_ptr = unsafe {
+            manifold_transform(
+                manifold_alloc_manifold() as *mut c_void,
+                self.0,
+                matrix.rows[0].x,
+                matrix.rows[0].y,
+                matrix.rows[0].z,
+                matrix.rows[1].x,
+                matrix.rows[1].y,
+                matrix.rows[1].z,
+                matrix.rows[2].x,
+                matrix.rows[2].y,
+                matrix.rows[2].z,
+                matrix.rows[3].x,
+                matrix.rows[3].y,
+                matrix.rows[3].z,
             )
         };
         Manifold::from_ptr(manifold_ptr)
@@ -1214,6 +1577,34 @@ impl Manifold {
     /// ```
     pub fn is_empty(&self) -> bool {
         unsafe { manifold_is_empty(self.0) == 1 }
+    }
+
+    /// Retrieves the status of the last manifold operation.
+    ///
+    /// # Returns
+    ///
+    /// An [`Error`] object that represents the error status of the last operation, if ther was one.
+    /// It can be used to determine if there was any issue during the manifold operations, such as
+    /// invalid inputs or operations that resulted in an empty manifold.
+    ///
+    /// # Examples
+    /// ```rust
+    /// use manifold3d::Manifold;
+    ///
+    /// let manifold = Manifold::new_tetrahedron();
+    /// if let Some(bla) = manifold.last_operation_status() {
+    ///     println!("Operation was successful!");
+    /// } else {
+    ///     println!("There was an error in the operation.");
+    /// }
+    /// ```
+    pub fn last_operation_status(&self) -> Option<Error> {
+        let status = unsafe { manifold_status(self.0) };
+        if status.is_error() {
+            Some(Error::from(status))
+        } else {
+            None
+        }
     }
 
     /// Returns the number of vertices in the manifold.
@@ -1713,9 +2104,9 @@ impl Manifold {
     ///     PositiveF64::new(1.0).unwrap(),
     ///     true,
     /// );
-    /// let mesh = manifold.mesh();
+    /// let mesh = manifold.as_mesh();
     /// ```
-    pub fn mesh(&self) -> MeshGL {
+    pub fn as_mesh(&self) -> MeshGL {
         let mesh_gl_ptr =
             unsafe { manifold_get_meshgl(manifold_alloc_meshgl() as *mut c_void, self.0) };
         MeshGL::from_ptr(mesh_gl_ptr)
@@ -1747,6 +2138,8 @@ impl Drop for Manifold {
         }
     }
 }
+
+pub type HalfEdgeIndex = usize;
 
 /// Represents a boolean operation that can be performed on a [Manifold].
 pub enum BooleanOperation {

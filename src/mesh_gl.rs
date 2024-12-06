@@ -1,4 +1,5 @@
-use crate::manifold::Manifold;
+use crate::manifold::{HalfEdgeIndex, Manifold};
+use crate::{check_error, Error};
 use manifold3d_sys::{
     manifold_alloc_manifold, manifold_alloc_meshgl, manifold_delete_meshgl, manifold_meshgl_copy,
     manifold_meshgl_face_id_length, manifold_meshgl_merge, manifold_meshgl_merge_length,
@@ -9,7 +10,6 @@ use manifold3d_sys::{
     manifold_meshgl_vert_properties_length, manifold_smooth, ManifoldMeshGL,
 };
 use std::alloc::{alloc, Layout};
-use std::collections::HashMap;
 use std::os::raw::c_void;
 
 pub type HalfedgeIndex = usize;
@@ -37,25 +37,79 @@ impl MeshGL {
         None
     }
 
+    /// Constructs a smooth version of the input [`MeshGL`] mesh by creating tangents.
+    ///
+    /// The actual triangle resolution remains unchanged; use [`Manifold::refine_via_edge_splits`]
+    /// to further interpolate to a higher-resolution curve.
+    ///
+    /// By default, each edge is assessed for maximum smoothness, aiming to minimize the
+    /// maximum mean curvature magnitude. Higher-order derivatives are not considered,
+    /// as interpolation is carried out independently per triangle, with constraints shared
+    /// only along their boundaries.
+    ///
+    /// # Arguments
+    ///
+    /// * `half_edge_smoothness`: Optionally, provide a vector of sharpened halfedges, typically a small subset
+    ///   of all halfedges. The order of entries is irrelevant, as each specifies the desired smoothness
+    ///   (ranging from zero to one, with one being the default for all unspecified halfedges) alongside the
+    ///   halfedge index (calculated as 3 * triangle index + 0, 1, 2, where 0 is the edge between triVert 0 and 1, etc).
+    ///   A smoothness of zero results in a sharp crease. Smoothness is averaged along each edge; when
+    ///   two sharpened edges meet at a vertex, their tangents are aligned to be colinear, allowing continuity
+    ///   of the sharpened edge. Vertices with only one sharpened edge are completely smooth, enabling
+    ///   sharpened edges to smoothly disappear at their ends. To sharpen a single vertex, sharpen all
+    ///   incident edges, which facilitates forming cones.
+    ///
+    /// # Returns
+    ///
+    /// A new manifold that represents a smoothed version of the original mesh.
+    ///
+    /// # Examples
+    /// ```rust
+    /// use manifold3d::types::PositiveF64;
+    /// use manifold3d::{Manifold, MeshGL};
+    ///
+    /// let manifold = Manifold::new_cuboid(
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     PositiveF64::new(1.0).unwrap(),
+    ///     true,
+    /// );
+    /// let mesh_gl = manifold.as_mesh();
+    ///
+    /// let half_edge_smoothness = vec![(0, 0.5), (1, 1.0)];
+    /// let smoothed_manifold = mesh_gl.smooth(Some(half_edge_smoothness));
+    /// ```
     pub fn smooth(
         &self,
-        mesh: &MeshGL,
-        half_edge_smoothness: HashMap<HalfedgeIndex, Smoothness>,
-    ) -> Manifold {
-        let length = half_edge_smoothness.len();
-        let (mut edge_indexes, mut edge_smoothness): (Vec<usize>, Vec<f64>) =
-            half_edge_smoothness.into_iter().unzip();
-        let manifold_ptr = unsafe { manifold_alloc_manifold() };
-        unsafe {
+        half_edge_smoothness: Option<Vec<(HalfEdgeIndex, f64)>>,
+    ) -> Result<Manifold, Error> {
+        let (half_edge_indices_ptr, half_edge_smoothness_ptr, length) = match half_edge_smoothness {
+            None => (
+                std::ptr::null::<HalfEdgeIndex>() as *mut HalfEdgeIndex,
+                std::ptr::null::<f64>() as *mut f64,
+                0usize,
+            ),
+            Some(vec) => {
+                let (half_edge_indices, half_edge_smoothness): (Vec<_>, Vec<_>) =
+                    vec.into_iter().unzip();
+
+                let (half_edge_indices_ptr, length, _) = half_edge_indices.into_raw_parts();
+                let (half_edge_smoothness_ptr, _, _) = half_edge_smoothness.into_raw_parts();
+
+                (half_edge_indices_ptr, half_edge_smoothness_ptr, length)
+            }
+        };
+
+        let manifold_ptr = unsafe {
             manifold_smooth(
-                manifold_ptr as *mut c_void,
-                mesh.ptr(),
-                edge_indexes.as_mut_ptr(),
-                edge_smoothness.as_mut_ptr(),
+                manifold_alloc_manifold() as *mut c_void,
+                self.ptr(),
+                half_edge_indices_ptr,
+                half_edge_smoothness_ptr,
                 length,
             )
         };
-        Manifold::from_ptr(manifold_ptr)
+        check_error(Manifold::from_ptr(manifold_ptr))
     }
 
     pub fn properties_per_vertex_count(&self) -> i32 {

@@ -1,10 +1,10 @@
-use crate::types::{Point2, PositiveI32};
+use crate::types::Point2;
 use manifold3d_sys::{
     manifold_alloc_simple_polygon, manifold_delete_simple_polygon, manifold_simple_polygon,
     manifold_simple_polygon_get_point, manifold_simple_polygon_length, ManifoldSimplePolygon,
     ManifoldVec2,
 };
-use std::os::raw::{c_int, c_void};
+use std::os::raw::c_void;
 
 pub struct SimplePolygon(*mut ManifoldSimplePolygon);
 
@@ -32,12 +32,11 @@ impl SimplePolygon {
         unsafe { manifold_simple_polygon_length(self.0) }
     }
 
-    pub fn get_point(&self, index: impl Into<PositiveI32>) -> Option<Point2> {
-        let index: i32 = index.into().get();
-        if index as i64 >= self.point_count() as i64 {
+    pub fn get_point(&self, index: usize) -> Option<Point2> {
+        if index >= self.point_count() {
             return None;
         }
-        let vec = unsafe { manifold_simple_polygon_get_point(self.0, c_int::from(index)) };
+        let vec = unsafe { manifold_simple_polygon_get_point(self.0, index) };
         Some(Point2::from(vec))
     }
 
