@@ -1,6 +1,7 @@
 use manifold3d_sys::ManifoldVec2;
 use std::ops::{Add, Sub};
 
+#[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Vec2 {
     pub x: f64,
