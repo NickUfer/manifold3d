@@ -3,7 +3,7 @@ name = "manifold3d"
 description = "Bindings for Manifold - a Geometry library for topological robustness"
 homepage = "https://github.com/NickUfer/manifold3d-rs"
 license = "Apache-2.0"
-version = "0.0.5"
+version = "0.0.6"
 edition = "2021"
 include = [
     "/src",
